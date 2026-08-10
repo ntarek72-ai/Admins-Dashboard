@@ -215,6 +215,7 @@
         <span style="color:var(--slate);font-size:13px;">to</span>
         <input type="date" id="rangeTo">
         <button onclick="renderRangeSummary()">Show</button>
+        <button onclick="exportRangeCSV()" style="background:var(--card);color:var(--ink);border:1px solid var(--line);">Export as sheet (CSV)</button>
       </div>
       <div id="rangeList"></div>
     </div>
@@ -573,6 +574,46 @@ function renderProductivity(dayTasks){
     const hrs = (minutesByPerson[n] / 60).toFixed(1);
     return '<div class="prod-row"><span>' + n + ' <span style="color:var(--slate);font-weight:400;font-size:12.5px;">(' + hrs + 'h logged)</span></span><b class="' + cls + '">' + pct.toFixed(1) + '%</b></div>';
   }).join('');
+}
+
+function csvEscape(val){
+  const s = String(val == null ? '' : val);
+  if(s.indexOf(',') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\n') !== -1){
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function exportRangeCSV(){
+  const from = document.getElementById('rangeFrom').value;
+  const to = document.getElementById('rangeTo').value;
+  if(!from || !to){
+    alert('Pick a start and end date first.');
+    return;
+  }
+  const inRange = tasks.filter(function(t){ return t.date >= from && t.date <= to; });
+  if(inRange.length === 0){
+    alert('No tasks in this date range.');
+    return;
+  }
+  const header = ['Date', 'Category', 'Task', 'Assignee', 'Volume', 'Minutes', 'Status', 'Productivity %'];
+  const rows = inRange.map(function(t){
+    const cat = (t.category || '').replace(' — admin', '');
+    const pct = (t.cap8 && t.vol) ? ((t.vol / t.cap8) * 100).toFixed(1) : ((t.minutes || 0) / 480 * 100).toFixed(1);
+    return [t.date, cat, t.text, t.assignee || 'Unassigned', t.vol || '', t.minutes, t.status, pct];
+  });
+  let csv = header.map(csvEscape).join(',') + '\n';
+  rows.forEach(function(r){ csv += r.map(csvEscape).join(',') + '\n'; });
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'tasks_' + from + '_to_' + to + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function renderRangeSummary(){
