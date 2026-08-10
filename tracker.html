@@ -371,25 +371,22 @@ async function addSmartTask(){
   const vol = parseFloat(document.getElementById('volInput').value) || 0;
   const suffix = note ? ' \u2014 ' + note : '';
   const date = document.getElementById('dateFilter').value || todayStr();
-  let cursor = Date.now();
+  const now = Date.now();
 
   selections.forEach(function(sel){
     const group = sel.group, name = sel.name, proc = sel.proc;
     if(proc.fixedMinutes){
-      tasks.push({ text: name + suffix, assignee: assignee, minutes: proc.fixedMinutes, start: cursor, status: 'open', date: date, category: group, cap8: null, vol: null });
-      cursor += proc.fixedMinutes * 60000;
+      tasks.push({ text: name + suffix, assignee: assignee, minutes: proc.fixedMinutes, start: now, status: 'open', date: date, category: group, cap8: null, vol: null });
     } else {
       if(!vol) return;
       if(proc.awb){
         AWB_STEPS.forEach(function(s){
           const minutes = Math.ceil(vol / s.rate);
-          tasks.push({ text: 'AWB ' + s.label + ' (' + vol + ')' + suffix, assignee: assignee, minutes: minutes, start: cursor, status: 'open', date: date, category: group, cap8: s.cap8, vol: vol });
-          cursor += minutes * 60000;
+          tasks.push({ text: 'AWB ' + s.label + ' (' + vol + ')' + suffix, assignee: assignee, minutes: minutes, start: now, status: 'open', date: date, category: group, cap8: s.cap8, vol: vol });
         });
       } else {
         const minutes = Math.ceil(vol / proc.rate);
-        tasks.push({ text: name + ' (' + vol + ')' + suffix, assignee: assignee, minutes: minutes, start: cursor, status: 'open', date: date, category: group, cap8: proc.cap8, vol: vol });
-        cursor += minutes * 60000;
+        tasks.push({ text: name + ' (' + vol + ')' + suffix, assignee: assignee, minutes: minutes, start: now, status: 'open', date: date, category: group, cap8: proc.cap8, vol: vol });
       }
     }
   });
