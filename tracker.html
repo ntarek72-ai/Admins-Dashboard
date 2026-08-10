@@ -610,46 +610,97 @@ function render(){
 
 let editingLeaveIndex = null;
 
+function nextDay(dateStr){
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + 1);
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function groupLeaveRanges(entries){
+  // entries: array of {task, index}, already filtered. Group by assignee+type, then merge consecutive dates.
+  const byKey = {};
+  entries.forEach(function(e){
+    const key = (e.task.assignee || 'Unassigned') + '|' + e.task.leaveType;
+    if(!byKey[key]) byKey[key] = [];
+    byKey[key].push(e);
+  });
+  const ranges = [];
+  Object.keys(byKey).forEach(function(key){
+    const list = byKey[key].slice().sort(function(a, b){ return a.task.date.localeCompare(b.task.date); });
+    let run = [list[0]];
+    for(let i = 1; i < list.length; i++){
+      if(list[i].task.date === nextDay(run[run.length - 1].task.date)){
+        run.push(list[i]);
+      } else {
+        ranges.push(run);
+        run = [list[i]];
+      }
+    }
+    ranges.push(run);
+  });
+  ranges.sort(function(a, b){ return b[0].task.date.localeCompare(a[0].task.date); });
+  return ranges;
+}
+
 function renderLeaveLog(){
   const el = document.getElementById('leaveLog');
   if(!el) return;
   const filterSel = document.getElementById('leaveLogFilter');
   const person = filterSel ? filterSel.value : '';
-  const leaveEntries = tasks.filter(function(t){ return t.isLeave && (!person || t.assignee === person); })
-    .slice()
-    .sort(function(a, b){ return b.date.localeCompare(a.date); });
-  if(leaveEntries.length === 0){
+  const entries = tasks
+    .map(function(t, i){ return { task: t, index: i }; })
+    .filter(function(e){ return e.task.isLeave && (!person || e.task.assignee === person); });
+
+  if(entries.length === 0){
     el.innerHTML = '<div class="empty">' + (person ? 'No leave logged for ' + person + '.' : 'No leave logged yet.') + '</div>';
     return;
   }
-  el.innerHTML = leaveEntries.map(function(t){
-    const i = tasks.indexOf(t);
-    if(i === editingLeaveIndex){
-      const options = ASSIGNEES.map(function(n){
-        return '<option' + (n === t.assignee ? ' selected' : '') + '>' + n + '</option>';
-      }).join('');
+
+  const ranges = groupLeaveRanges(entries);
+
+  el.innerHTML = ranges.map(function(run){
+    const first = run[0].task;
+    const indices = run.map(function(e){ return e.index; });
+    const cls = first.leaveType === 'Sick' ? 'sick' : '';
+
+    if(run.length === 1){
+      const i = run[0].index;
+      if(i === editingLeaveIndex){
+        const options = ASSIGNEES.map(function(n){
+          return '<option' + (n === first.assignee ? ' selected' : '') + '>' + n + '</option>';
+        }).join('');
+        return '' +
+          '<div class="prod-row">' +
+            '<div class="edit-row">' +
+              '<span style="font-weight:600;">' + first.date + '</span>' +
+              '<select id="editLeaveAssignee_' + i + '">' + options + '</select>' +
+              '<select id="editLeaveType_' + i + '">' +
+                '<option value="Annual"' + (first.leaveType === 'Annual' ? ' selected' : '') + '>Annual</option>' +
+                '<option value="Sick"' + (first.leaveType === 'Sick' ? ' selected' : '') + '>Sick</option>' +
+              '</select>' +
+              '<button class="save" onclick="saveEditLeave(' + i + ')">Save</button>' +
+              '<button class="cancel" onclick="cancelEditLeave()">Cancel</button>' +
+            '</div>' +
+          '</div>';
+      }
       return '' +
         '<div class="prod-row">' +
-          '<div class="edit-row">' +
-            '<span style="font-weight:600;">' + t.date + '</span>' +
-            '<select id="editLeaveAssignee_' + i + '">' + options + '</select>' +
-            '<select id="editLeaveType_' + i + '">' +
-              '<option value="Annual"' + (t.leaveType === 'Annual' ? ' selected' : '') + '>Annual</option>' +
-              '<option value="Sick"' + (t.leaveType === 'Sick' ? ' selected' : '') + '>Sick</option>' +
-            '</select>' +
-            '<button class="save" onclick="saveEditLeave(' + i + ')">Save</button>' +
-            '<button class="cancel" onclick="cancelEditLeave()">Cancel</button>' +
-          '</div>' +
+          '<span>' + first.date + ' \u2014 ' + (first.assignee || 'Unassigned') + '</span>' +
+          '<span style="display:flex;align-items:center;gap:8px;">' +
+            '<span class="leave-banner ' + cls + '">' + first.leaveType + ' Leave</span>' +
+            '<button class="edit-btn" onclick="startEditLeave(' + i + ')" style="font-size:12px;padding:5px 10px;">Edit</button>' +
+            '<button class="del" onclick="deleteLeaveRange(\'' + indices.join(',') + '\')" aria-label="Delete">&times;</button>' +
+          '</span>' +
         '</div>';
     }
-    const cls = t.leaveType === 'Sick' ? 'sick' : '';
+
+    const last = run[run.length - 1].task;
     return '' +
       '<div class="prod-row">' +
-        '<span>' + t.date + ' \u2014 ' + (t.assignee || 'Unassigned') + '</span>' +
+        '<span>' + first.date + ' \u2192 ' + last.date + ' <span style="color:var(--slate);font-weight:400;font-size:12.5px;">(' + run.length + ' days)</span> \u2014 ' + (first.assignee || 'Unassigned') + '</span>' +
         '<span style="display:flex;align-items:center;gap:8px;">' +
-          '<span class="leave-banner ' + cls + '">' + t.leaveType + ' Leave</span>' +
-          '<button class="edit-btn" onclick="startEditLeave(' + i + ')" style="font-size:12px;padding:5px 10px;">Edit</button>' +
-          '<button class="del" onclick="deleteLeave(' + i + ')" aria-label="Delete">&times;</button>' +
+          '<span class="leave-banner ' + cls + '">' + first.leaveType + ' Leave</span>' +
+          '<button class="del" onclick="deleteLeaveRange(\'' + indices.join(',') + '\')" aria-label="Delete">&times;</button>' +
         '</span>' +
       '</div>';
   }).join('');
@@ -676,8 +727,9 @@ async function saveEditLeave(i){
   render();
 }
 
-async function deleteLeave(i){
-  tasks.splice(i, 1);
+async function deleteLeaveRange(indicesStr){
+  const indices = indicesStr.split(',').map(Number).sort(function(a, b){ return b - a; });
+  indices.forEach(function(i){ tasks.splice(i, 1); });
   await saveTasks();
   render();
 }
