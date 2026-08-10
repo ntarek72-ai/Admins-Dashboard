@@ -81,9 +81,44 @@
   .range-grid{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;}
   .range-grid input[type=date]{padding:8px 10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;}
   .range-grid button{background:var(--brand);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;font-family:inherit;}
+
+  /* Login gate */
+  #loginGate{
+    position:fixed; inset:0; background:var(--ink); display:flex; align-items:center;
+    justify-content:center; z-index:999; padding:20px;
+  }
+  .login-card{
+    background:#fff; border-radius:16px; padding:36px 32px; width:100%; max-width:360px;
+    text-align:center; box-shadow:0 20px 50px rgba(0,0,0,.3);
+  }
+  .login-card .brand{ font-family:'Manrope',sans-serif; font-weight:800; font-size:22px; color:var(--brand-dark); margin-bottom:2px; }
+  .login-card .tag{ font-size:13px; color:var(--slate); margin-bottom:22px; }
+  .login-card input{
+    width:100%; padding:11px 12px; border-radius:8px; border:1px solid var(--line);
+    margin-bottom:12px; font-family:inherit; font-size:15px; box-sizing:border-box;
+  }
+  .login-card button{
+    width:100%; padding:12px; border-radius:8px; border:none; background:var(--brand);
+    color:#fff; font-weight:700; font-size:15px; cursor:pointer; font-family:inherit;
+  }
+  .login-card button:hover{ background:var(--brand-dark); }
+  .login-error{ color:var(--danger); font-size:13px; margin-top:10px; min-height:16px; }
+  #appContent{ display:none; }
 </style>
 </head>
 <body>
+<div id="loginGate">
+  <div class="login-card">
+    <div class="brand">Yodawy</div>
+    <div class="tag">Daily Task Tracker</div>
+    <input type="text" id="userInput" placeholder="Username" autocomplete="off">
+    <input type="password" id="passInput" placeholder="Password" autocomplete="off">
+    <button onclick="tryLogin()">Sign in</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<div id="appContent">
 <div class="wrap">
   <header>
     <div>
@@ -639,6 +674,20 @@ setInterval(async function(){
   await loadTasks();
   render();
 }, 20000);
+
+const CREDENTIALS = { username: "yodawy", password: "Yodawy@2026" };
+function tryLogin(){
+  const u = document.getElementById('userInput').value.trim();
+  const p = document.getElementById('passInput').value;
+  if (u === CREDENTIALS.username && p === CREDENTIALS.password){
+    document.getElementById('loginGate').style.display = 'none';
+    document.getElementById('appContent').style.display = 'block';
+  } else {
+    document.getElementById('loginError').textContent = 'Incorrect username or password.';
+  }
+}
+document.getElementById('passInput').addEventListener('keydown', function(e){ if(e.key==='Enter') tryLogin(); });
 </script>
+</div>
 </body>
 </html>
