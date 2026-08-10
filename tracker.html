@@ -61,6 +61,8 @@
   .cat-Acute{background:#2F6B6B;}
   .cat-Collections{background:#A84E76;}
   .cat-Manual{background:#6b6b6b;}
+  .leave-banner{background:#F3E8D9;color:#8A5A1E;font-size:12.5px;font-weight:700;padding:6px 12px;border-radius:8px;margin-bottom:8px;display:inline-block;}
+  .leave-banner.sick{background:#FBEAEA;color:var(--danger);}
 
   .person-card{background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:14px;overflow:hidden;}
   .person-head{background:var(--paper);padding:12px 16px;display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:14.5px;}
@@ -178,6 +180,7 @@
     </div>
   </div>
 
+
   <div class="section-head">
     <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--slate);cursor:pointer;">
       <input type="checkbox" id="selectAllBox" onchange="toggleSelectAll(this.checked)"> Select all
@@ -202,10 +205,27 @@
   </div>
 
   <div id="protectedZone" style="display:none;">
+    <div id="leaveBanner" style="margin-bottom:10px;"></div>
+
     <div class="prod-table">
       <h2>Productivity by person &mdash; selected day</h2>
       <div class="note">Below 100% is normal &mdash; it depends on the day's workload, not just effort.</div>
       <div id="prodList"></div>
+    </div>
+
+    <div class="range-box">
+      <h2>Leave log</h2>
+      <div class="add-grid" style="grid-template-columns:1fr 0.8fr 0.8fr 0.8fr auto;margin-bottom:14px;">
+        <select id="leaveAssigneeInput"></select>
+        <select id="leaveTypeInput">
+          <option value="Annual">Annual</option>
+          <option value="Sick">Sick</option>
+        </select>
+        <input type="date" id="leaveFromInput">
+        <input type="date" id="leaveToInput">
+        <button onclick="addLeave()">Log leave</button>
+      </div>
+      <div id="leaveLog"></div>
     </div>
 
     <div class="range-box">
@@ -418,6 +438,48 @@ async function addManualTask(){
   render();
 }
 
+function dateRange(from, to){
+  const dates = [];
+  let cur = new Date(from + 'T00:00:00');
+  const end = new Date(to + 'T00:00:00');
+  while(cur <= end){
+    dates.push(cur.getFullYear() + '-' + String(cur.getMonth()+1).padStart(2,'0') + '-' + String(cur.getDate()).padStart(2,'0'));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return dates;
+}
+
+function findLeaveIndex(day, name){
+  for(let i = 0; i < tasks.length; i++){
+    const t = tasks[i];
+    if(t.isLeave && t.date === day && (t.assignee || 'Unassigned') === name) return i;
+  }
+  return -1;
+}
+
+async function addLeave(){
+  const name = document.getElementById('leaveAssigneeInput').value;
+  const type = document.getElementById('leaveTypeInput').value;
+  const from = document.getElementById('leaveFromInput').value;
+  const to = document.getElementById('leaveToInput').value || from;
+  if(!name || !from) return;
+
+  dateRange(from, to).forEach(function(d){
+    const existingIdx = findLeaveIndex(d, name);
+    if(existingIdx !== -1){
+      tasks[existingIdx].leaveType = type;
+      tasks[existingIdx].text = type + ' Leave';
+    } else {
+      tasks.push({ text: type + ' Leave', assignee: name, minutes: 0, start: Date.now(), status: 'done', date: d, category: 'Leave', cap8: null, vol: null, isLeave: true, leaveType: type });
+    }
+  });
+
+  document.getElementById('leaveFromInput').value = '';
+  document.getElementById('leaveToInput').value = '';
+  await saveTasks();
+  render();
+}
+
 function fmtTimeLeft(t){
   if(t.status === 'done') return {text: 'Done', cls: 'done', late: false};
   const due = t.start + t.minutes * 60000;
@@ -440,7 +502,7 @@ function getFilteredTasks(){
   const day = currentDate();
   const person = currentAssigneeFilter();
   return tasks.filter(function(t){
-    if(t.isOvertime) return false;
+    if(t.isOvertime || t.isLeave) return false;
     if(t.date !== day) return false;
     if(person && t.assignee !== person) return false;
     return true;
@@ -483,6 +545,18 @@ function render(){
     return '<div class="chip">' + c + ': <b>' + distByCat[c].size + '</b> ' + (distByCat[c].size === 1 ? 'person' : 'people') + '</div>';
   }).join('');
 
+  // who's on leave today
+  const leaveToday = tasks.filter(function(t){ return t.isLeave && t.date === currentDate(); });
+  const leaveEl = document.getElementById('leaveBanner');
+  if(leaveToday.length > 0){
+    leaveEl.innerHTML = leaveToday.map(function(t){
+      const cls = t.leaveType === 'Sick' ? 'sick' : '';
+      return '<span class="leave-banner ' + cls + '">' + (t.assignee || 'Unassigned') + ' \u2014 ' + t.leaveType + ' Leave</span>';
+    }).join(' ');
+  } else {
+    leaveEl.innerHTML = '';
+  }
+
   if(dayTasks.length === 0){
     list.innerHTML = '<div class="empty">No tasks for this day yet.</div>';
   } else {
@@ -519,6 +593,23 @@ function render(){
 
   updateBulkBar();
   renderProductivity(dayTasks);
+  renderLeaveLog();
+}
+
+function renderLeaveLog(){
+  const el = document.getElementById('leaveLog');
+  if(!el) return;
+  const leaveEntries = tasks.filter(function(t){ return t.isLeave; })
+    .slice()
+    .sort(function(a, b){ return b.date.localeCompare(a.date); });
+  if(leaveEntries.length === 0){
+    el.innerHTML = '<div class="empty">No leave logged yet.</div>';
+    return;
+  }
+  el.innerHTML = leaveEntries.map(function(t){
+    const cls = t.leaveType === 'Sick' ? 'sick' : '';
+    return '<div class="prod-row"><span>' + t.date + ' \u2014 ' + (t.assignee || 'Unassigned') + '</span><span class="leave-banner ' + cls + '">' + t.leaveType + ' Leave</span></div>';
+  }).join('');
 }
 
 function taskRowHtml(t){
@@ -595,19 +686,28 @@ function renderProductivity(dayTasks){
     const name = t.assignee || 'Unassigned';
     minutesByPerson[name] = (minutesByPerson[name] || 0) + (t.minutes || 0);
   });
+  const leaveByPerson = {};
+  tasks.filter(function(t){ return t.isLeave && t.date === day; }).forEach(function(t){
+    leaveByPerson[t.assignee || 'Unassigned'] = t.leaveType;
+  });
+
   const el = document.getElementById('prodList');
   const names = Object.keys(minutesByPerson);
-  if(names.length === 0){
+  const leaveOnlyNames = Object.keys(leaveByPerson).filter(function(n){ return names.indexOf(n) === -1; });
+
+  if(names.length === 0 && leaveOnlyNames.length === 0){
     el.innerHTML = '<div class="empty">No completed tasks for this day yet.</div>';
     return;
   }
-  el.innerHTML = names.map(function(n){
+
+  const workRows = names.map(function(n){
     const otMin = getOvertimeMinutes(day, n);
     const base = 480 + otMin;
     const pct = (minutesByPerson[n] / base) * 100;
     const cls = pct >= 80 ? 'pgood' : (pct >= 50 ? 'pmid' : 'plow');
     const hrs = (minutesByPerson[n] / 60).toFixed(1);
     const otNote = otMin > 0 ? ' + ' + otMin + 'm overtime logged' : '';
+    const leaveTag = leaveByPerson[n] ? ' <span class="leave-banner' + (leaveByPerson[n] === 'Sick' ? ' sick' : '') + '" style="font-size:11px;padding:2px 8px;">' + leaveByPerson[n] + ' Leave</span>' : '';
 
     const tl = tierLabel(pct);
     const label = tl.text, labelCls = tl.cls;
@@ -619,7 +719,7 @@ function renderProductivity(dayTasks){
     return '' +
       '<div class="prod-row" style="flex-direction:column;align-items:stretch;gap:4px;">' +
         '<div style="display:flex;justify-content:space-between;">' +
-          '<span>' + n + ' <span style="color:var(--slate);font-weight:400;font-size:12.5px;">(' + hrs + 'h logged' + otNote + ')</span></span>' +
+          '<span>' + n + leaveTag + ' <span style="color:var(--slate);font-weight:400;font-size:12.5px;">(' + hrs + 'h logged' + otNote + ')</span></span>' +
           '<span style="text-align:right;"><b class="' + cls + '">' + pct.toFixed(1) + '%</b><br><span class="' + labelCls + '" style="font-size:12px;font-weight:700;">' + label + '</span></span>' +
         '</div>' +
         overtimeExplain +
@@ -630,6 +730,16 @@ function renderProductivity(dayTasks){
         '</div>' +
       '</div>';
   }).join('');
+
+  const leaveRows = leaveOnlyNames.map(function(n){
+    const type = leaveByPerson[n];
+    return '' +
+      '<div class="prod-row"><span>' + n + '</span>' +
+        '<span class="leave-banner' + (type === 'Sick' ? ' sick' : '') + '">' + type + ' Leave</span>' +
+      '</div>';
+  }).join('');
+
+  el.innerHTML = workRows + leaveRows;
 }
 
 function csvEscape(val){
@@ -655,17 +765,17 @@ function exportRangeCSV(){
   const header = ['Date', 'Category', 'Task', 'Note', 'Assignee', 'Volume', 'Minutes', 'Status', 'Productivity %'];
   const rows = inRange.map(function(t){
     const cat = (t.category || '').replace(' — admin', '');
-    const pct = t.isOvertime ? 'N/A' : ((t.cap8 && t.vol) ? ((t.vol / t.cap8) * 100).toFixed(1) : ((t.minutes || 0) / 480 * 100).toFixed(1));
+    const pct = (t.isOvertime || t.isLeave) ? 'N/A' : ((t.cap8 && t.vol) ? ((t.vol / t.cap8) * 100).toFixed(1) : ((t.minutes || 0) / 480 * 100).toFixed(1));
     return [t.date, cat, t.text, t.note || '', t.assignee || 'Unassigned', t.vol || '', t.minutes, t.status, pct];
   });
   let csv = header.map(csvEscape).join(',') + '\n';
   rows.forEach(function(r){ csv += r.map(csvEscape).join(',') + '\n'; });
 
-  // summary section: total hours and average daily % per person across the range
+  // summary section: total hours, average daily %, leave days, and overtime per person across the range
   const minutesByPerson = {};
   const pctByPersonByDate = {};
   inRange.forEach(function(t){
-    if(t.status !== 'done' || t.isOvertime) return;
+    if(t.status !== 'done' || t.isOvertime || t.isLeave) return;
     const name = t.assignee || 'Unassigned';
     minutesByPerson[name] = (minutesByPerson[name] || 0) + (t.minutes || 0);
     if(!pctByPersonByDate[name]) pctByPersonByDate[name] = {};
@@ -673,14 +783,35 @@ function exportRangeCSV(){
     const pct = ((t.minutes || 0) / base) * 100;
     pctByPersonByDate[name][t.date] = (pctByPersonByDate[name][t.date] || 0) + pct;
   });
+
+  const annualDaysByPerson = {};
+  const sickDaysByPerson = {};
+  inRange.forEach(function(t){
+    if(!t.isLeave) return;
+    const name = t.assignee || 'Unassigned';
+    if(t.leaveType === 'Sick'){ sickDaysByPerson[name] = (sickDaysByPerson[name] || 0) + 1; }
+    else { annualDaysByPerson[name] = (annualDaysByPerson[name] || 0) + 1; }
+  });
+
+  const overtimeMinByPerson = {};
+  inRange.forEach(function(t){
+    if(!t.isOvertime) return;
+    const name = t.assignee || 'Unassigned';
+    overtimeMinByPerson[name] = (overtimeMinByPerson[name] || 0) + (t.minutes || 0);
+  });
+
+  const allNames = Array.from(new Set(
+    Object.keys(minutesByPerson).concat(Object.keys(annualDaysByPerson), Object.keys(sickDaysByPerson), Object.keys(overtimeMinByPerson))
+  ));
+
   csv += '\n';
-  csv += ['Summary (' + from + ' to ' + to + ')', '', '', '', '', '', '', ''].map(csvEscape).join(',') + '\n';
-  csv += ['Assignee', 'Total Hours', 'Active Days', 'Average Daily %'].map(csvEscape).join(',') + '\n';
-  Object.keys(minutesByPerson).forEach(function(n){
-    const dates = Object.keys(pctByPersonByDate[n]);
-    const avgPct = dates.reduce(function(sum, d){ return sum + pctByPersonByDate[n][d]; }, 0) / dates.length;
-    const hrs = (minutesByPerson[n] / 60).toFixed(1);
-    csv += [n, hrs, dates.length, avgPct.toFixed(1) + '%'].map(csvEscape).join(',') + '\n';
+  csv += ['Summary (' + from + ' to ' + to + ')', '', '', '', '', '', ''].map(csvEscape).join(',') + '\n';
+  csv += ['Assignee', 'Total Hours', 'Active Days', 'Average Daily %', 'Annual Leave Days', 'Sick Leave Days', 'Overtime (min)'].map(csvEscape).join(',') + '\n';
+  allNames.forEach(function(n){
+    const dates = pctByPersonByDate[n] ? Object.keys(pctByPersonByDate[n]) : [];
+    const avgPct = dates.length ? (dates.reduce(function(sum, d){ return sum + pctByPersonByDate[n][d]; }, 0) / dates.length).toFixed(1) + '%' : 'N/A';
+    const hrs = minutesByPerson[n] ? (minutesByPerson[n] / 60).toFixed(1) : '0.0';
+    csv += [n, hrs, dates.length, avgPct, annualDaysByPerson[n] || 0, sickDaysByPerson[n] || 0, overtimeMinByPerson[n] || 0].map(csvEscape).join(',') + '\n';
   });
 
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -704,7 +835,7 @@ function renderRangeSummary(){
     return;
   }
   const inRange = tasks.filter(function(t){
-    return t.status === 'done' && !t.isOvertime && t.date >= from && t.date <= to;
+    return t.status === 'done' && !t.isOvertime && !t.isLeave && t.date >= from && t.date <= to;
   });
   if(inRange.length === 0){
     el.innerHTML = '<div class="empty">No completed tasks in this range.</div>';
@@ -955,6 +1086,7 @@ function populateAdminRef(){
 populateProcessSelect();
 fillAssigneeSelect('assigneeInput', 'Assignee');
 fillAssigneeSelect('manualAssigneeInput', 'Assignee');
+fillAssigneeSelect('leaveAssigneeInput', 'Assignee');
 fillAssigneeSelect('assigneeFilter', 'All people');
 populateAdminRef();
 document.getElementById('volInput').addEventListener('input', updatePreview);
