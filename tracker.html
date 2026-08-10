@@ -120,6 +120,10 @@
   }
   .login-card button:hover{ background:var(--brand-dark); }
   .login-error{ color:var(--danger); font-size:13px; margin-top:10px; min-height:16px; }
+  .powered-by{ font-size:11px; letter-spacing:1px; color:#9AA5B8; text-transform:uppercase; text-align:center; margin-top:22px; }
+  .powered-by b{ color:var(--brand-dark); font-weight:700; }
+  .powered-by.on-page{ color:var(--slate); margin-top:32px; padding-top:16px; border-top:1px solid var(--line); }
+  .powered-by.on-page b{ color:var(--brand-dark); }
   #appContent{ display:none; }
 </style>
 </head>
@@ -132,6 +136,7 @@
     <input type="password" id="passInput" placeholder="Password" autocomplete="off">
     <button onclick="tryLogin()">Sign in</button>
     <div class="login-error" id="loginError"></div>
+    <div class="powered-by">Powered by <b>Nada Onsy</b></div>
   </div>
 </div>
 
@@ -246,6 +251,8 @@
     <h2>Admin &amp; fixed-duration tasks (reference)</h2>
     <div id="adminRef" class="chips"></div>
   </div>
+
+  <div class="powered-by on-page">Powered by <b>Nada Onsy</b></div>
 </div>
 
 <script>
