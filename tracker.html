@@ -142,7 +142,7 @@
   <div id="lateAlert"></div>
 
   <div class="add-box">
-    <select id="processSelect"></select>
+    <select id="processSelect" multiple size="8"></select>
     <div class="add-grid" style="margin-top:10px;">
       <div></div>
       <input type="number" id="volInput" placeholder="Volume" min="1">
@@ -290,62 +290,74 @@ function populateProcessSelect(){
   sel.addEventListener('change', updatePreview);
 }
 
-function getSelectedProcess(){
-  const val = document.getElementById('processSelect').value;
-  const parts = val.split('::');
-  return { group: parts[0], name: parts[1], proc: PROCESSES[parts[0]][parts[1]] };
+function getSelectedProcesses(){
+  const sel = document.getElementById('processSelect');
+  return Array.from(sel.selectedOptions).map(function(opt){
+    const parts = opt.value.split('::');
+    return { group: parts[0], name: parts[1], proc: PROCESSES[parts[0]][parts[1]] };
+  });
 }
 
 function updatePreview(){
-  const sel = getSelectedProcess();
-  const proc = sel.proc;
+  const selections = getSelectedProcesses();
   const vol = parseFloat(document.getElementById('volInput').value) || 0;
   const preview = document.getElementById('previewLine');
 
-  if(proc.fixedMinutes){
-    preview.textContent = 'Fixed duration: ' + proc.fixedMinutes + ' min';
-    return;
-  }
-  if(!vol){ preview.textContent = ''; return; }
-  if(proc.awb){
-    let total = 0;
-    const parts = AWB_STEPS.map(function(s){
-      const m = Math.ceil(vol / s.rate);
-      total += m;
-      return s.label + ' ' + m + 'm';
-    });
-    preview.textContent = parts.join(' \u2192 ') + ' \u2022 total ' + total + 'm';
-  } else {
-    const m = Math.ceil(vol / proc.rate);
-    preview.textContent = 'Estimated: ' + m + ' min';
-  }
+  if(selections.length === 0){ preview.textContent = ''; return; }
+
+  const parts = [];
+  let grandTotal = 0;
+  selections.forEach(function(sel){
+    const proc = sel.proc;
+    if(proc.fixedMinutes){
+      parts.push(sel.name + ' ' + proc.fixedMinutes + 'm (fixed)');
+      grandTotal += proc.fixedMinutes;
+    } else if(vol){
+      if(proc.awb){
+        let awbTotal = 0;
+        AWB_STEPS.forEach(function(s){ awbTotal += Math.ceil(vol / s.rate); });
+        parts.push(sel.name + ' ' + awbTotal + 'm (4 steps)');
+        grandTotal += awbTotal;
+      } else {
+        const m = Math.ceil(vol / proc.rate);
+        parts.push(sel.name + ' ' + m + 'm');
+        grandTotal += m;
+      }
+    }
+  });
+  preview.textContent = parts.join(' + ') + (grandTotal ? ' \u2022 total ' + grandTotal + 'm' : '');
 }
 
 async function addSmartTask(){
-  const sel = getSelectedProcess();
-  const group = sel.group, name = sel.name, proc = sel.proc;
+  const selections = getSelectedProcesses();
+  if(selections.length === 0) return;
   const note = document.getElementById('noteInput').value.trim();
   const assignee = document.getElementById('assigneeInput').value.trim();
   const vol = parseFloat(document.getElementById('volInput').value) || 0;
   const suffix = note ? ' \u2014 ' + note : '';
   const date = document.getElementById('dateFilter').value || todayStr();
+  let cursor = Date.now();
 
-  if(proc.fixedMinutes){
-    tasks.push({ text: name + suffix, assignee: assignee, minutes: proc.fixedMinutes, start: Date.now(), status: 'open', date: date, category: group, cap8: null, vol: null });
-  } else {
-    if(!vol) return;
-    let cursor = Date.now();
-    if(proc.awb){
-      AWB_STEPS.forEach(function(s){
-        const minutes = Math.ceil(vol / s.rate);
-        tasks.push({ text: 'AWB ' + s.label + ' (' + vol + ')' + suffix, assignee: assignee, minutes: minutes, start: cursor, status: 'open', date: date, category: group, cap8: s.cap8, vol: vol });
-        cursor += minutes * 60000;
-      });
+  selections.forEach(function(sel){
+    const group = sel.group, name = sel.name, proc = sel.proc;
+    if(proc.fixedMinutes){
+      tasks.push({ text: name + suffix, assignee: assignee, minutes: proc.fixedMinutes, start: cursor, status: 'open', date: date, category: group, cap8: null, vol: null });
+      cursor += proc.fixedMinutes * 60000;
     } else {
-      const minutes = Math.ceil(vol / proc.rate);
-      tasks.push({ text: name + ' (' + vol + ')' + suffix, assignee: assignee, minutes: minutes, start: cursor, status: 'open', date: date, category: group, cap8: proc.cap8, vol: vol });
+      if(!vol) return;
+      if(proc.awb){
+        AWB_STEPS.forEach(function(s){
+          const minutes = Math.ceil(vol / s.rate);
+          tasks.push({ text: 'AWB ' + s.label + ' (' + vol + ')' + suffix, assignee: assignee, minutes: minutes, start: cursor, status: 'open', date: date, category: group, cap8: s.cap8, vol: vol });
+          cursor += minutes * 60000;
+        });
+      } else {
+        const minutes = Math.ceil(vol / proc.rate);
+        tasks.push({ text: name + ' (' + vol + ')' + suffix, assignee: assignee, minutes: minutes, start: cursor, status: 'open', date: date, category: group, cap8: proc.cap8, vol: vol });
+        cursor += minutes * 60000;
+      }
     }
-  }
+  });
 
   document.getElementById('volInput').value = '';
   document.getElementById('assigneeInput').value = '';
