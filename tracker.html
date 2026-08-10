@@ -56,6 +56,21 @@
   .task button.del{border:none;background:none;color:var(--danger);cursor:pointer;font-size:16px;padding:4px;}
   .empty{color:var(--slate);text-align:center;padding:30px;font-size:14px;}
 
+  .cat-badge{color:#fff;font-size:11px;padding:2px 9px;border-radius:999px;margin-right:8px;font-weight:700;white-space:nowrap;}
+  .cat-Chronic{background:#7A2E3F;}
+  .cat-Acute{background:#2F6B6B;}
+  .cat-Collections{background:#A84E76;}
+  .cat-Manual{background:#6b6b6b;}
+
+  .person-card{background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:14px;overflow:hidden;}
+  .person-head{background:var(--paper);padding:12px 16px;display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:14.5px;}
+  .person-head .count{font-size:12.5px;color:var(--slate);font-weight:500;}
+  .person-body{padding:10px 16px 14px;}
+  .person-body .task{margin-bottom:8px;}
+  details.done-group{margin-top:8px;}
+  details.done-group summary{cursor:pointer;font-size:13px;color:var(--slate);font-weight:600;padding:6px 0;}
+  details.done-group[open] summary{margin-bottom:6px;}
+
   .edit-row{display:flex;gap:8px;align-items:center;flex:1;flex-wrap:wrap;}
   .edit-row select, .edit-row input{padding:8px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:13.5px;}
   .edit-row button{border:none;border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:700;}
@@ -169,21 +184,32 @@
   </div>
   <div id="taskList"></div>
 
-  <div class="prod-table">
-    <h2>Productivity by person &mdash; selected day</h2>
-    <div class="note">Below 100% is normal &mdash; it depends on the day's workload, not just effort.</div>
-    <div id="prodList"></div>
+  <div id="protectLock" class="range-box">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:13.5px;color:var(--slate);">Productivity figures are hidden by default.</span>
+      <input type="password" id="protectPassInput" placeholder="Password" style="padding:8px 10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;">
+      <button onclick="tryUnlockProtected()" style="background:var(--brand);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;font-family:inherit;">Unlock</button>
+    </div>
+    <div id="protectError" style="color:var(--danger);font-size:13px;margin-top:8px;"></div>
   </div>
 
-  <div class="range-box">
-    <h2>Range summary</h2>
-    <div class="range-grid">
-      <input type="date" id="rangeFrom">
-      <span style="color:var(--slate);font-size:13px;">to</span>
-      <input type="date" id="rangeTo">
-      <button onclick="renderRangeSummary()">Show</button>
+  <div id="protectedZone" style="display:none;">
+    <div class="prod-table">
+      <h2>Productivity by person &mdash; selected day</h2>
+      <div class="note">Below 100% is normal &mdash; it depends on the day's workload, not just effort.</div>
+      <div id="prodList"></div>
     </div>
-    <div id="rangeList"></div>
+
+    <div class="range-box">
+      <h2>Range summary</h2>
+      <div class="range-grid">
+        <input type="date" id="rangeFrom">
+        <span style="color:var(--slate);font-size:13px;">to</span>
+        <input type="date" id="rangeTo">
+        <button onclick="renderRangeSummary()">Show</button>
+      </div>
+      <div id="rangeList"></div>
+    </div>
   </div>
 
   <div class="range-box">
@@ -246,7 +272,7 @@ const PROCESSES = {
   },
   "Collections — admin": {
     "Missing mails": { fixedMinutes: 120 },
-    "Daily update sheets": { fixedMinutes: 90 },
+    "Daily update sheets": { fixedMinutes: 60 },
     "Bulk tracker update": { fixedMinutes: 120 },
     "Bulk sending received mail": { fixedMinutes: 60 },
   },
@@ -450,38 +476,69 @@ function render(){
   if(dayTasks.length === 0){
     list.innerHTML = '<div class="empty">No tasks for this day yet.</div>';
   } else {
-    list.innerHTML = dayTasks.map(function(t){
-      const i = tasks.indexOf(t);
-      if(i === editingIndex){
-        const options = ASSIGNEES.map(function(n){
-          return '<option' + (n === t.assignee ? ' selected' : '') + '>' + n + '</option>';
-        }).join('');
-        return '' +
-          '<div class="task">' +
-            '<div class="edit-row">' +
-              '<span style="font-weight:600;">' + t.text + '</span>' +
-              '<select id="editAssignee_' + i + '"><option value="">Assignee</option>' + options + '</select>' +
-              '<input type="number" id="editMinutes_' + i + '" value="' + t.minutes + '" style="width:90px;" min="1"> min' +
-              '<button class="save" onclick="saveEdit(' + i + ')">Save</button>' +
-              '<button class="cancel" onclick="cancelEdit()">Cancel</button>' +
-            '</div>' +
-          '</div>';
-      }
-      const tl = fmtTimeLeft(t);
-      const isDone = t.status === 'done';
+    const groups = {};
+    dayTasks.forEach(function(t){
+      const name = t.assignee || 'Unassigned';
+      if(!groups[name]) groups[name] = [];
+      groups[name].push(t);
+    });
+    const groupNames = Object.keys(groups).sort(function(a, b){
+      if(a === 'Unassigned') return 1;
+      if(b === 'Unassigned') return -1;
+      return a.localeCompare(b);
+    });
+
+    list.innerHTML = groupNames.map(function(name){
+      const items = groups[name];
+      const openItems = items.filter(function(t){ return t.status !== 'done'; });
+      const doneItems = items.filter(function(t){ return t.status === 'done'; });
+      const openHtml = openItems.length
+        ? openItems.map(function(t){ return taskRowHtml(t); }).join('')
+        : '<div class="empty" style="padding:14px;">Nothing in progress.</div>';
+      const doneHtml = doneItems.map(function(t){ return taskRowHtml(t); }).join('');
       return '' +
-        '<div class="task ' + (isDone ? 'done' : '') + (tl.late ? ' late' : '') + '">' +
-          '<div class="title ' + (isDone ? 'done' : '') + '">' + t.text + '</div>' +
-          '<div class="assignee">' + (t.assignee || '\u2014') + '</div>' +
-          '<div class="time ' + tl.cls + '">' + tl.text + '</div>' +
-          '<button class="edit-btn" onclick="startEdit(' + i + ')">Edit</button>' +
-          '<button class="done-btn ' + (isDone ? 'is-done' : '') + '" onclick="toggleDone(' + i + ')">' + (isDone ? 'Done' : 'Mark done') + '</button>' +
-          '<button class="del" onclick="deleteTask(' + i + ')" aria-label="Delete">&times;</button>' +
+        '<div class="person-card">' +
+          '<div class="person-head"><span>' + name + '</span><span class="count">' + openItems.length + ' in progress \u00b7 ' + doneItems.length + ' done</span></div>' +
+          '<div class="person-body">' +
+            openHtml +
+            (doneItems.length ? '<details class="done-group"><summary>Completed (' + doneItems.length + ')</summary>' + doneHtml + '</details>' : '') +
+          '</div>' +
         '</div>';
     }).join('');
   }
 
   renderProductivity(dayTasks);
+}
+
+function taskRowHtml(t){
+  const i = tasks.indexOf(t);
+  if(i === editingIndex){
+    const options = ASSIGNEES.map(function(n){
+      return '<option' + (n === t.assignee ? ' selected' : '') + '>' + n + '</option>';
+    }).join('');
+    return '' +
+      '<div class="task">' +
+        '<div class="edit-row">' +
+          '<span style="font-weight:600;">' + t.text + '</span>' +
+          '<select id="editAssignee_' + i + '"><option value="">Assignee</option>' + options + '</select>' +
+          '<input type="number" id="editMinutes_' + i + '" value="' + t.minutes + '" style="width:90px;" min="1"> min' +
+          '<button class="save" onclick="saveEdit(' + i + ')">Save</button>' +
+          '<button class="cancel" onclick="cancelEdit()">Cancel</button>' +
+        '</div>' +
+      '</div>';
+  }
+  const tl = fmtTimeLeft(t);
+  const isDone = t.status === 'done';
+  const cat = (t.category || '').replace(' — admin', '');
+  const badge = cat ? '<span class="cat-badge cat-' + cat + '">' + cat + '</span>' : '';
+  return '' +
+    '<div class="task ' + (isDone ? 'done' : '') + (tl.late ? ' late' : '') + '">' +
+      '<div class="title ' + (isDone ? 'done' : '') + '">' + badge + t.text + '</div>' +
+      '<div class="time ' + tl.cls + '">' + tl.text + '</div>' +
+      '<button class="edit-btn" onclick="startEdit(' + i + ')">Edit</button>' +
+      '<button class="done-btn ' + (isDone ? 'is-done' : '') + '" onclick="toggleDone(' + i + ')">' + (isDone ? 'Done' : 'Mark done') + '</button>' +
+      '<button class="del" onclick="deleteTask(' + i + ')" aria-label="Delete">&times;</button>' +
+    '</div>';
 }
 
 function renderProductivity(dayTasks){
@@ -549,18 +606,22 @@ function copySummary(){
   dayTasks.forEach(function(t){
     text += '- [' + (t.status === 'done' ? 'x' : ' ') + '] ' + t.text + ' (' + (t.assignee || 'Unassigned') + ', ' + t.minutes + ' min)\n';
   });
-  text += '\nProductivity:\n';
-  const byPerson = {};
-  const minutesByPerson = {};
-  dayTasks.forEach(function(t){
-    if(t.status !== 'done') return;
-    const name = t.assignee || 'Unassigned';
-    minutesByPerson[name] = (minutesByPerson[name] || 0) + (t.minutes || 0);
-    byPerson[name] = (byPerson[name] || 0) + ((t.minutes || 0) / 480) * 100;
-  });
-  Object.keys(minutesByPerson).forEach(function(n){
-    text += '- ' + n + ': ' + byPerson[n].toFixed(1) + '% (' + (minutesByPerson[n]/60).toFixed(1) + 'h)\n';
-  });
+
+  const isUnlocked = document.getElementById('protectedZone').style.display !== 'none';
+  if(isUnlocked){
+    text += '\nProductivity:\n';
+    const byPerson = {};
+    const minutesByPerson = {};
+    dayTasks.forEach(function(t){
+      if(t.status !== 'done') return;
+      const name = t.assignee || 'Unassigned';
+      minutesByPerson[name] = (minutesByPerson[name] || 0) + (t.minutes || 0);
+      byPerson[name] = (byPerson[name] || 0) + ((t.minutes || 0) / 480) * 100;
+    });
+    Object.keys(minutesByPerson).forEach(function(n){
+      text += '- ' + n + ': ' + byPerson[n].toFixed(1) + '% (' + (minutesByPerson[n]/60).toFixed(1) + 'h)\n';
+    });
+  }
 
   navigator.clipboard.writeText(text).then(function(){
     const btn = document.getElementById('copyBtn');
@@ -688,6 +749,19 @@ setInterval(async function(){
 }, 20000);
 
 const CREDENTIALS = { username: "yodawy", password: "Yodawy@2026" };
+const PROTECT_PASSWORD = "Supervisor@2026";
+
+function tryUnlockProtected(){
+  const p = document.getElementById('protectPassInput').value;
+  if (p === PROTECT_PASSWORD){
+    document.getElementById('protectLock').style.display = 'none';
+    document.getElementById('protectedZone').style.display = 'block';
+  } else {
+    document.getElementById('protectError').textContent = 'Incorrect password.';
+  }
+}
+document.getElementById('protectPassInput').addEventListener('keydown', function(e){ if(e.key==='Enter') tryUnlockProtected(); });
+
 function tryLogin(){
   const u = document.getElementById('userInput').value.trim();
   const p = document.getElementById('passInput').value;
