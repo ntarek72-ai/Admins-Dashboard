@@ -23,18 +23,26 @@
 
   .toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
   .toolbar label{font-size:13px;color:var(--slate);font-weight:600;}
-  .toolbar input[type=date]{padding:8px 10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;}
-  .toolbar button.today{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;font-family:inherit;}
+  .toolbar input[type=date], .toolbar select{padding:8px 10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;background:#fff;}
+  .toolbar button.ghost{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;font-family:inherit;}
+
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+  .chip{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;color:var(--slate);}
+  .chip b{color:var(--ink);}
+
+  .alert{background:#FBEAEA;border:1px solid #E9B8B8;color:var(--danger);border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:14px;}
 
   .add-box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:20px;}
-  .add-grid{display:grid;grid-template-columns:1.8fr 0.9fr 1fr 1fr auto;gap:8px;}
+  .add-box .label{font-size:12.5px;color:var(--slate);font-weight:600;margin-bottom:10px;}
+  .add-grid{display:grid;grid-template-columns:1.5fr 0.7fr 1fr 1fr auto;gap:8px;align-items:stretch;}
   @media (max-width:760px){.add-grid{grid-template-columns:1fr 1fr;}}
-  .add-grid input, .add-grid select{padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;background:#fff;}
+  .add-grid input, .add-grid select{padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;background:#fff;min-width:0;width:100%;box-sizing:border-box;}
   .add-grid button{background:var(--brand);color:#fff;border:none;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer;font-family:inherit;}
   .add-grid button:hover{background:var(--brand-dark);}
 
   .task{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
   .task.done{opacity:.55;}
+  .task.late{border-color:#E9B8B8;}
   .task .title{flex:1;min-width:180px;font-weight:600;font-size:14.5px;}
   .task .title.done{text-decoration:line-through;}
   .task .assignee{font-size:12.5px;color:var(--slate);background:var(--paper);padding:3px 10px;border-radius:999px;}
@@ -43,16 +51,36 @@
   .time.warn{color:var(--warn);}
   .time.late{color:var(--danger);}
   .time.done{color:var(--done);}
-  .task button.done-btn{border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:600;}
+  .task button.done-btn, .task button.edit-btn{border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:600;}
   .task button.done-btn.is-done{background:var(--done);color:#fff;border-color:var(--done);}
   .task button.del{border:none;background:none;color:var(--danger);cursor:pointer;font-size:16px;padding:4px;}
   .empty{color:var(--slate);text-align:center;padding:30px;font-size:14px;}
 
+  .edit-row{display:flex;gap:8px;align-items:center;flex:1;flex-wrap:wrap;}
+  .edit-row select, .edit-row input{padding:8px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:13.5px;}
+  .edit-row button{border:none;border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:700;}
+  .edit-row button.save{background:var(--brand);color:#fff;}
+  .edit-row button.cancel{background:var(--paper);border:1px solid var(--line);}
+
   .prod-table{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:24px;}
-  .prod-table h2{font-size:16px;margin:0 0 10px;}
+  .prod-table h2{font-size:16px;margin:0 0 4px;}
+  .prod-table .note{font-size:12.5px;color:var(--slate);margin-bottom:12px;}
   .prod-row{display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--line);font-size:14px;}
   .prod-row:first-child{border-top:none;}
-  .prod-row b{font-family:'Manrope',sans-serif;color:var(--brand-dark);}
+  .prod-row b{font-family:'Manrope',sans-serif;}
+  .prod-row b.pgood{color:var(--done);}
+  .prod-row b.pmid{color:var(--warn);}
+  .prod-row b.plow{color:var(--danger);}
+
+  .section-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+  .copy-btn{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:600;}
+  .copy-btn.copied{background:var(--done);color:#fff;border-color:var(--done);}
+
+  .range-box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:16px;}
+  .range-box h2{font-size:16px;margin:0 0 10px;}
+  .range-grid{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;}
+  .range-grid input[type=date]{padding:8px 10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;}
+  .range-grid button{background:var(--brand);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;font-family:inherit;}
 </style>
 </head>
 <body>
@@ -69,46 +97,87 @@
   <div class="toolbar">
     <label for="dateFilter">Day:</label>
     <input type="date" id="dateFilter">
-    <button class="today" onclick="setToday()">Today</button>
+    <button class="ghost" onclick="setToday()">Today</button>
+    <label for="assigneeFilter" style="margin-left:10px;">Person:</label>
+    <select id="assigneeFilter"></select>
   </div>
 
+  <div style="font-size:12.5px;color:var(--slate);font-weight:600;margin-bottom:6px;">Currently working (open tasks today):</div>
+  <div class="chips" id="distChips"></div>
+  <div id="lateAlert"></div>
+
   <div class="add-box">
-    <div class="add-grid">
-      <select id="processSelect"></select>
+    <select id="processSelect"></select>
+    <div class="add-grid" style="margin-top:10px;">
+      <div></div>
       <input type="number" id="volInput" placeholder="Volume" min="1">
-      <input type="text" id="assigneeInput" placeholder="Assignee">
+      <select id="assigneeInput"></select>
       <input type="text" id="noteInput" placeholder="Note (optional)">
       <button onclick="addSmartTask()">Add</button>
     </div>
     <div id="previewLine" style="font-size:12.5px;color:var(--slate);margin-top:8px;"></div>
   </div>
 
+  <div class="add-box">
+    <div class="label">Log manual time (no target/rate &mdash; still counts toward hours worked)</div>
+    <div class="add-grid" style="grid-template-columns:1.5fr 0.7fr 1fr auto;">
+      <input type="text" id="manualTaskInput" placeholder="Task name">
+      <input type="number" id="manualMinInput" placeholder="Minutes" min="1">
+      <select id="manualAssigneeInput"></select>
+      <button onclick="addManualTask()">Add</button>
+    </div>
+  </div>
+
+  <div class="section-head">
+    <div></div>
+    <button class="copy-btn" id="copyBtn" onclick="copySummary()">Copy day summary</button>
+  </div>
   <div id="taskList"></div>
 
   <div class="prod-table">
     <h2>Productivity by person &mdash; selected day</h2>
+    <div class="note">Below 100% is normal &mdash; it depends on the day's workload, not just effort.</div>
     <div id="prodList"></div>
+  </div>
+
+  <div class="range-box">
+    <h2>Range summary</h2>
+    <div class="range-grid">
+      <input type="date" id="rangeFrom">
+      <span style="color:var(--slate);font-size:13px;">to</span>
+      <input type="date" id="rangeTo">
+      <button onclick="renderRangeSummary()">Show</button>
+    </div>
+    <div id="rangeList"></div>
+  </div>
+
+  <div class="range-box">
+    <h2>Admin &amp; fixed-duration tasks (reference)</h2>
+    <div id="adminRef" class="chips"></div>
   </div>
 </div>
 
 <script>
-const STORAGE_KEY = 'daily-tasks-v1';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxzI0DPZOtDkFDoaoP_XZE5szuWc2aZNqofE6a9Zy-GGA298u4tMNF5MlOjKsYRu5HDAw/exec';
+let saving = false;
 let tasks = [];
+let editingIndex = null;
 
-// rate = claims per minute, cap8 = claims per 8h shift (used as the daily target denominator)
+const ASSIGNEES = ['Mohamed Khaled','Gad ElKarem','Mohamed Orabi','Ahmed AbdelRehim','Doaa AbdelSallam','Mohamed Ashraf'];
+
 const PROCESSES = {
   "Chronic": {
-    "Generate Claim": { rate: 60, cap8: 28800 },
     "Printing": { rate: 20, cap8: 9600 },
+    "Print AWB from Odoo": { rate: 0.5, cap8: 240 },
     "Matching (Stapling)": { rate: 20, cap8: 9600 },
     "Matching & Stamping": { rate: 12, cap8: 5760 },
     "Invoicing": { rate: 20, cap8: 9600 },
     "Stamping": { rate: 30, cap8: 14400 },
     "Uploading": { rate: 15, cap8: 7200 },
     "Invoicing & Uploading": { rate: 8.57, cap8: 4114 },
-    "Full cycle incl. Uploading (300)": { rate: 3.75, cap8: 1800 },
-    "Full cycle (300)": { rate: 5, cap8: 2400 },
-    "Generate+Print+Staple+Stamp (300)": { rate: 6.67, cap8: 3200 },
+    "Full cycle incl. Uploading": { rate: 3.75, cap8: 1800 },
+    "Full cycle": { rate: 5, cap8: 2400 },
+    "Generate+Print+Staple+Stamp": { rate: 6.67, cap8: 3200 },
     "Totals Review": { rate: 3.33, cap8: 1600 },
     "AWB / Numbering Updated": { rate: 14.29, cap8: 6857 },
     "AWB / Sorting": { rate: 10, cap8: 4800 },
@@ -116,9 +185,9 @@ const PROCESSES = {
     "AWB / Stapling + shortages": { rate: 10, cap8: 4800 },
     "Tawoon count/tally": { rate: 0.3125, cap8: 150 },
     "Nice Deer review": { rate: 10, cap8: 4800 },
+    "AWB (full workflow)": { awb: true },
   },
   "Acute": {
-    "AWB (full workflow)": { awb: true },
     "Printing/Matching/Invoicing/Stamping": { rate: 1.42, cap8: 680 },
     "Printing": { rate: 5.67, cap8: 2720 },
     "Matching/Invoicing/Stamping": { rate: 1.89, cap8: 907 },
@@ -141,7 +210,7 @@ const PROCESSES = {
     "Counting / Separating": { rate: 15, cap8: 7200 },
   },
   "Collections — admin": {
-    "Missing mails": { fixedMinutes: 180 },
+    "Missing mails": { fixedMinutes: 120 },
     "Daily update sheets": { fixedMinutes: 90 },
     "Bulk tracker update": { fixedMinutes: 120 },
     "Bulk sending received mail": { fixedMinutes: 60 },
@@ -165,12 +234,19 @@ function setToday(){
   render();
 }
 
+function fillAssigneeSelect(id, includeBlankLabel){
+  const sel = document.getElementById(id);
+  let html = '<option value="">' + includeBlankLabel + '</option>';
+  ASSIGNEES.forEach(function(n){ html += '<option>' + n + '</option>'; });
+  sel.innerHTML = html;
+}
+
 function populateProcessSelect(){
   const sel = document.getElementById('processSelect');
   let html = '';
-  Object.keys(PROCESSES).forEach(group => {
+  Object.keys(PROCESSES).forEach(function(group){
     html += '<optgroup label="' + group + '">';
-    Object.keys(PROCESSES[group]).forEach(name => {
+    Object.keys(PROCESSES[group]).forEach(function(name){
       html += '<option value="' + group + '::' + name + '">' + name + '</option>';
     });
     html += '</optgroup>';
@@ -182,9 +258,7 @@ function populateProcessSelect(){
 function getSelectedProcess(){
   const val = document.getElementById('processSelect').value;
   const parts = val.split('::');
-  const group = parts[0];
-  const name = parts[1];
-  return { group: group, name: name, proc: PROCESSES[group][name] };
+  return { group: parts[0], name: parts[1], proc: PROCESSES[parts[0]][parts[1]] };
 }
 
 function updatePreview(){
@@ -246,39 +320,114 @@ async function addSmartTask(){
   render();
 }
 
+async function addManualTask(){
+  const name = document.getElementById('manualTaskInput').value.trim();
+  const minutes = parseInt(document.getElementById('manualMinInput').value) || 0;
+  const assignee = document.getElementById('manualAssigneeInput').value.trim();
+  const date = document.getElementById('dateFilter').value || todayStr();
+  if(!name || !minutes) return;
+
+  tasks.push({ text: name, assignee: assignee, minutes: minutes, start: Date.now(), status: 'open', date: date, category: 'Manual', cap8: null, vol: null });
+
+  document.getElementById('manualTaskInput').value = '';
+  document.getElementById('manualMinInput').value = '';
+  document.getElementById('manualAssigneeInput').value = '';
+  await saveTasks();
+  render();
+}
+
 function fmtTimeLeft(t){
-  if(t.status === 'done') return {text: 'Done', cls: 'done'};
+  if(t.status === 'done') return {text: 'Done', cls: 'done', late: false};
   const due = t.start + t.minutes * 60000;
   const diff = due - Date.now();
   const mins = Math.round(diff / 60000);
-  if(mins < 0) return {text: Math.abs(mins) + 'm late', cls: 'late'};
-  if(mins <= 10) return {text: mins + 'm left', cls: 'warn'};
-  return {text: mins + 'm left', cls: 'ok'};
+  if(mins < 0) return {text: Math.abs(mins) + 'm late', cls: 'late', late: true};
+  if(mins <= 10) return {text: mins + 'm left', cls: 'warn', late: false};
+  return {text: mins + 'm left', cls: 'ok', late: false};
 }
 
 function currentDate(){
   return document.getElementById('dateFilter').value || todayStr();
 }
 
-function render(){
+function currentAssigneeFilter(){
+  return document.getElementById('assigneeFilter').value;
+}
+
+function getFilteredTasks(){
   const day = currentDate();
-  const dayTasks = tasks.filter(function(t){ return t.date === day; });
+  const person = currentAssigneeFilter();
+  return tasks.filter(function(t){
+    if(t.date !== day) return false;
+    if(person && t.assignee !== person) return false;
+    return true;
+  });
+}
+
+function render(){
+  const dayTasks = getFilteredTasks();
   const list = document.getElementById('taskList');
   const openCount = dayTasks.filter(function(t){ return t.status !== 'done'; }).length;
   document.getElementById('countBadge').textContent = openCount + ' open';
+
+  // late alert
+  const lateTasks = dayTasks.filter(function(t){
+    return t.status !== 'done' && (t.start + t.minutes * 60000) < Date.now();
+  });
+  const alertEl = document.getElementById('lateAlert');
+  if(lateTasks.length > 0){
+    const names = lateTasks.map(function(t){ return (t.assignee || 'Unassigned') + ' \u2014 ' + t.text; });
+    alertEl.innerHTML = '<div class="alert">\u26A0\uFE0F ' + lateTasks.length + ' task(s) running late: ' + names.join(', ') + '</div>';
+  } else {
+    alertEl.innerHTML = '';
+  }
+
+  // team distribution by category, based on open tasks for the day (ignores person filter)
+  const dayAll = tasks.filter(function(t){ return t.date === currentDate(); });
+  const distByCat = { 'Chronic': new Set(), 'Acute': new Set(), 'Collections': new Set() };
+  dayAll.forEach(function(t){
+    if(t.status === 'done') return;
+    const cat = (t.category || '').replace(' — admin', '');
+    if(!distByCat[cat]) distByCat[cat] = new Set();
+    if(t.assignee) distByCat[cat].add(t.assignee);
+  });
+  const chipsEl = document.getElementById('distChips');
+  const catOrder = ['Chronic', 'Acute', 'Collections', 'Manual'];
+  const catNames = Object.keys(distByCat).sort(function(a, b){
+    return catOrder.indexOf(a) - catOrder.indexOf(b);
+  });
+  chipsEl.innerHTML = catNames.map(function(c){
+    return '<div class="chip">' + c + ': <b>' + distByCat[c].size + '</b> ' + (distByCat[c].size === 1 ? 'person' : 'people') + '</div>';
+  }).join('');
 
   if(dayTasks.length === 0){
     list.innerHTML = '<div class="empty">No tasks for this day yet.</div>';
   } else {
     list.innerHTML = dayTasks.map(function(t){
       const i = tasks.indexOf(t);
+      if(i === editingIndex){
+        const options = ASSIGNEES.map(function(n){
+          return '<option' + (n === t.assignee ? ' selected' : '') + '>' + n + '</option>';
+        }).join('');
+        return '' +
+          '<div class="task">' +
+            '<div class="edit-row">' +
+              '<span style="font-weight:600;">' + t.text + '</span>' +
+              '<select id="editAssignee_' + i + '"><option value="">Assignee</option>' + options + '</select>' +
+              '<input type="number" id="editMinutes_' + i + '" value="' + t.minutes + '" style="width:90px;" min="1"> min' +
+              '<button class="save" onclick="saveEdit(' + i + ')">Save</button>' +
+              '<button class="cancel" onclick="cancelEdit()">Cancel</button>' +
+            '</div>' +
+          '</div>';
+      }
       const tl = fmtTimeLeft(t);
       const isDone = t.status === 'done';
       return '' +
-        '<div class="task ' + (isDone ? 'done' : '') + '">' +
+        '<div class="task ' + (isDone ? 'done' : '') + (tl.late ? ' late' : '') + '">' +
           '<div class="title ' + (isDone ? 'done' : '') + '">' + t.text + '</div>' +
           '<div class="assignee">' + (t.assignee || '\u2014') + '</div>' +
           '<div class="time ' + tl.cls + '">' + tl.text + '</div>' +
+          '<button class="edit-btn" onclick="startEdit(' + i + ')">Edit</button>' +
           '<button class="done-btn ' + (isDone ? 'is-done' : '') + '" onclick="toggleDone(' + i + ')">' + (isDone ? 'Done' : 'Mark done') + '</button>' +
           '<button class="del" onclick="deleteTask(' + i + ')" aria-label="Delete">&times;</button>' +
         '</div>';
@@ -290,22 +439,111 @@ function render(){
 
 function renderProductivity(dayTasks){
   const byPerson = {};
+  const minutesByPerson = {};
   dayTasks.forEach(function(t){
     if(t.status !== 'done') return;
-    if(!t.cap8 || !t.vol) return;
     const name = t.assignee || 'Unassigned';
-    const pct = (t.vol / t.cap8) * 100;
+    minutesByPerson[name] = (minutesByPerson[name] || 0) + (t.minutes || 0);
+    const pct = ((t.minutes || 0) / 480) * 100;
     byPerson[name] = (byPerson[name] || 0) + pct;
   });
   const el = document.getElementById('prodList');
-  const names = Object.keys(byPerson);
+  const names = Object.keys(minutesByPerson);
   if(names.length === 0){
-    el.innerHTML = '<div class="empty">No completed claim-based tasks for this day yet.</div>';
+    el.innerHTML = '<div class="empty">No completed tasks for this day yet.</div>';
     return;
   }
   el.innerHTML = names.map(function(n){
-    return '<div class="prod-row"><span>' + n + '</span><b>' + byPerson[n].toFixed(1) + '%</b></div>';
+    const pct = byPerson[n] || 0;
+    const cls = pct >= 80 ? 'pgood' : (pct >= 50 ? 'pmid' : 'plow');
+    const hrs = (minutesByPerson[n] / 60).toFixed(1);
+    return '<div class="prod-row"><span>' + n + ' <span style="color:var(--slate);font-weight:400;font-size:12.5px;">(' + hrs + 'h logged)</span></span><b class="' + cls + '">' + pct.toFixed(1) + '%</b></div>';
   }).join('');
+}
+
+function renderRangeSummary(){
+  const from = document.getElementById('rangeFrom').value;
+  const to = document.getElementById('rangeTo').value;
+  const el = document.getElementById('rangeList');
+  if(!from || !to){
+    el.innerHTML = '<div class="empty">Pick a start and end date.</div>';
+    return;
+  }
+  const inRange = tasks.filter(function(t){
+    return t.status === 'done' && t.date >= from && t.date <= to;
+  });
+  if(inRange.length === 0){
+    el.innerHTML = '<div class="empty">No completed tasks in this range.</div>';
+    return;
+  }
+  const minutesByPerson = {};
+  const pctByPersonByDate = {};
+  inRange.forEach(function(t){
+    const name = t.assignee || 'Unassigned';
+    minutesByPerson[name] = (minutesByPerson[name] || 0) + (t.minutes || 0);
+    if(!pctByPersonByDate[name]) pctByPersonByDate[name] = {};
+    const pct = ((t.minutes || 0) / 480) * 100;
+    pctByPersonByDate[name][t.date] = (pctByPersonByDate[name][t.date] || 0) + pct;
+  });
+  const names = Object.keys(minutesByPerson);
+  el.innerHTML = names.map(function(n){
+    const dates = Object.keys(pctByPersonByDate[n]);
+    const avgPct = dates.reduce(function(sum, d){ return sum + pctByPersonByDate[n][d]; }, 0) / dates.length;
+    const hrs = (minutesByPerson[n] / 60).toFixed(1);
+    const cls = avgPct >= 80 ? 'pgood' : (avgPct >= 50 ? 'pmid' : 'plow');
+    return '<div class="prod-row"><span>' + n + ' <span style="color:var(--slate);font-weight:400;font-size:12.5px;">(' + hrs + 'h total &middot; ' + dates.length + ' day(s) active)</span></span><b class="' + cls + '">avg ' + avgPct.toFixed(1) + '%</b></div>';
+  }).join('');
+}
+
+function copySummary(){
+  const day = currentDate();
+  const dayTasks = getFilteredTasks();
+  let text = 'Daily tasks \u2014 ' + day + '\n\n';
+  dayTasks.forEach(function(t){
+    text += '- [' + (t.status === 'done' ? 'x' : ' ') + '] ' + t.text + ' (' + (t.assignee || 'Unassigned') + ', ' + t.minutes + ' min)\n';
+  });
+  text += '\nProductivity:\n';
+  const byPerson = {};
+  const minutesByPerson = {};
+  dayTasks.forEach(function(t){
+    if(t.status !== 'done') return;
+    const name = t.assignee || 'Unassigned';
+    minutesByPerson[name] = (minutesByPerson[name] || 0) + (t.minutes || 0);
+    byPerson[name] = (byPerson[name] || 0) + ((t.minutes || 0) / 480) * 100;
+  });
+  Object.keys(minutesByPerson).forEach(function(n){
+    text += '- ' + n + ': ' + byPerson[n].toFixed(1) + '% (' + (minutesByPerson[n]/60).toFixed(1) + 'h)\n';
+  });
+
+  navigator.clipboard.writeText(text).then(function(){
+    const btn = document.getElementById('copyBtn');
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(function(){
+      btn.textContent = 'Copy day summary';
+      btn.classList.remove('copied');
+    }, 1800);
+  });
+}
+
+function startEdit(i){
+  editingIndex = i;
+  render();
+}
+
+function cancelEdit(){
+  editingIndex = null;
+  render();
+}
+
+async function saveEdit(i){
+  const newAssignee = document.getElementById('editAssignee_' + i).value;
+  const newMinutes = parseInt(document.getElementById('editMinutes_' + i).value) || tasks[i].minutes;
+  tasks[i].assignee = newAssignee;
+  tasks[i].minutes = newMinutes;
+  editingIndex = null;
+  await saveTasks();
+  render();
 }
 
 async function toggleDone(i){
@@ -319,9 +557,6 @@ async function deleteTask(i){
   await saveTasks();
   render();
 }
-
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxzI0DPZOtDkFDoaoP_XZE5szuWc2aZNqofE6a9Zy-GGA298u4tMNF5MlOjKsYRu5HDAw/exec';
-let saving = false;
 
 function setSyncStatus(msg, isError){
   const el = document.getElementById('syncStatus');
@@ -368,9 +603,29 @@ async function saveTasks(){
   saving = false;
 }
 
+function populateAdminRef(){
+  const el = document.getElementById('adminRef');
+  let html = '';
+  Object.keys(PROCESSES).forEach(function(group){
+    if(group.indexOf('admin') === -1) return;
+    Object.keys(PROCESSES[group]).forEach(function(name){
+      const proc = PROCESSES[group][name];
+      if(!proc.fixedMinutes) return;
+      const label = proc.fixedMinutes >= 60 ? (proc.fixedMinutes / 60) + 'h' : proc.fixedMinutes + ' min';
+      html += '<div class="chip">' + name + ': <b>' + label + '</b></div>';
+    });
+  });
+  el.innerHTML = html;
+}
+
 populateProcessSelect();
+fillAssigneeSelect('assigneeInput', 'Assignee');
+fillAssigneeSelect('manualAssigneeInput', 'Assignee');
+fillAssigneeSelect('assigneeFilter', 'All people');
+populateAdminRef();
 document.getElementById('volInput').addEventListener('input', updatePreview);
 document.getElementById('dateFilter').addEventListener('change', render);
+document.getElementById('assigneeFilter').addEventListener('change', render);
 document.getElementById('dateFilter').value = todayStr();
 
 async function init(){

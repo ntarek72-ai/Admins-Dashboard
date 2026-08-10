@@ -224,6 +224,7 @@
     <h2>Target Details by Work Stream</h2>
     <div class="sub">Performance rate (Target) and daily per-person capacity for each task.</div>
     <div id="tables"></div>
+    <div style="font-size:13px;color:var(--slate);margin-top:14px;">Ad-hoc tasks with no fixed rate or target are logged as manual time entries in the daily tracker tool, and still count toward hours worked even though they're not listed here.</div>
   </section>
 
 </div>
@@ -234,17 +235,17 @@ const DATA = {
     label: "Chronic",
     color: "chronic",
     tasks: [
-      ["Generate Claim", "300 claims / 5 min", 28800],
       ["Printing", "300 claims / 15 min", 9600],
+      ["Print AWB from Odoo", "1 claim / 2 min", 240],
       ["Matching (Stapling)", "300 claims / 15 min", 9600],
       ["Matching & Stamping", "300 claims / 25 min", 5760],
       ["Invoicing", "300 claims / 15 min", 9600],
       ["Stamping", "300 claims / 10 min", 14400],
       ["Uploading", "300 claims / 20 min", 7200],
       ["Invoicing & Uploading", "300 claims / 35 min", 4114],
-      ["Generate+Printing+Stapling+Invoicing+Stamping+Uploading (300)", "300 claims / 80 min", 1800],
-      ["Generate+Printing+Stapling+Invoicing+Stamping (300)", "300 claims / 60 min", 2400],
-      ["Generate+Printing+Stapling+Stamping (300)", "300 claims / 45 min", 3200],
+      ["Full cycle incl. Uploading", "300 claims / 80 min", 1800],
+      ["Full cycle", "300 claims / 60 min", 2400],
+      ["Generate+Print+Staple+Stamp", "300 claims / 45 min", 3200],
       ["Totals Review", "100 claims / 30 min", 1600],
       ["AWB / Numbering Updated", "100 claims / 7 min", 6857],
       ["AWB / Sorting", "100 claims / 10 min", 4800],
@@ -285,7 +286,7 @@ const DATA = {
       ["Counting / Separating", "300 claims / 20 min", 7200],
     ],
     fixed: [
-      ["Missing mails", "3 hours"],
+      ["Missing mails", "2 hours"],
       ["Daily update sheets", "90 min"],
       ["Bulk tracker update", "2 hours"],
       ["Bulk sending received mail", "60 min"],
