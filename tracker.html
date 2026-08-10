@@ -179,8 +179,16 @@
   </div>
 
   <div class="section-head">
-    <div></div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--slate);cursor:pointer;">
+      <input type="checkbox" id="selectAllBox" onchange="toggleSelectAll(this.checked)"> Select all
+    </label>
     <button class="copy-btn" id="copyBtn" onclick="copySummary()">Copy day summary</button>
+  </div>
+  <div id="bulkBar" style="display:none;background:var(--ink);color:#fff;border-radius:10px;padding:10px 14px;margin-bottom:12px;align-items:center;gap:10px;flex-wrap:wrap;">
+    <span id="bulkCount" style="font-size:13px;"></span>
+    <input type="date" id="bulkDateInput" style="padding:7px 9px;border-radius:6px;border:none;font-family:inherit;font-size:13.5px;">
+    <button onclick="bulkMoveDate()" style="background:var(--brand);color:#fff;border:none;border-radius:6px;padding:7px 12px;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px;">Move to date</button>
+    <button onclick="clearSelection()" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:7px 12px;cursor:pointer;font-family:inherit;font-size:13px;">Clear selection</button>
   </div>
   <div id="taskList"></div>
 
@@ -223,6 +231,7 @@ const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxzI0DPZOtDkFDo
 let saving = false;
 let tasks = [];
 let editingIndex = null;
+let selectedIndices = new Set();
 
 const ASSIGNEES = ['Mohamed Khaled','Gad ElKarem','Mohamed Orabi','Ahmed AbdelRehim','Doaa AbdelSallam','Mohamed Ashraf'];
 
@@ -507,6 +516,7 @@ function render(){
     }).join('');
   }
 
+  updateBulkBar();
   renderProductivity(dayTasks);
 }
 
@@ -522,6 +532,7 @@ function taskRowHtml(t){
           '<span style="font-weight:600;">' + t.text + '</span>' +
           '<select id="editAssignee_' + i + '"><option value="">Assignee</option>' + options + '</select>' +
           '<input type="number" id="editMinutes_' + i + '" value="' + t.minutes + '" style="width:90px;" min="1"> min' +
+          '<input type="date" id="editDate_' + i + '" value="' + t.date + '">' +
           '<button class="save" onclick="saveEdit(' + i + ')">Save</button>' +
           '<button class="cancel" onclick="cancelEdit()">Cancel</button>' +
         '</div>' +
@@ -531,8 +542,10 @@ function taskRowHtml(t){
   const isDone = t.status === 'done';
   const cat = (t.category || '').replace(' — admin', '');
   const badge = cat ? '<span class="cat-badge cat-' + cat + '">' + cat + '</span>' : '';
+  const checked = selectedIndices.has(i) ? ' checked' : '';
   return '' +
     '<div class="task ' + (isDone ? 'done' : '') + (tl.late ? ' late' : '') + '">' +
+      '<input type="checkbox"' + checked + ' onchange="toggleSelect(' + i + ', this.checked)" style="margin-right:4px;">' +
       '<div class="title ' + (isDone ? 'done' : '') + '">' + badge + t.text + '</div>' +
       '<div class="time ' + tl.cls + '">' + tl.text + '</div>' +
       '<button class="edit-btn" onclick="startEdit(' + i + ')">Edit</button>' +
@@ -647,9 +660,55 @@ function cancelEdit(){
 async function saveEdit(i){
   const newAssignee = document.getElementById('editAssignee_' + i).value;
   const newMinutes = parseInt(document.getElementById('editMinutes_' + i).value) || tasks[i].minutes;
+  const newDate = document.getElementById('editDate_' + i).value || tasks[i].date;
   tasks[i].assignee = newAssignee;
   tasks[i].minutes = newMinutes;
+  tasks[i].date = newDate;
   editingIndex = null;
+  await saveTasks();
+  render();
+}
+
+function toggleSelect(i, checked){
+  if(checked){ selectedIndices.add(i); } else { selectedIndices.delete(i); }
+  updateBulkBar();
+}
+
+function toggleSelectAll(checked){
+  const dayTasks = getFilteredTasks();
+  if(checked){
+    dayTasks.forEach(function(t){ selectedIndices.add(tasks.indexOf(t)); });
+  } else {
+    selectedIndices.clear();
+  }
+  render();
+}
+
+function clearSelection(){
+  selectedIndices.clear();
+  document.getElementById('selectAllBox').checked = false;
+  render();
+}
+
+function updateBulkBar(){
+  const bar = document.getElementById('bulkBar');
+  const count = document.getElementById('bulkCount');
+  if(selectedIndices.size > 0){
+    bar.style.display = 'flex';
+    count.textContent = selectedIndices.size + ' selected';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+async function bulkMoveDate(){
+  const newDate = document.getElementById('bulkDateInput').value;
+  if(!newDate || selectedIndices.size === 0) return;
+  selectedIndices.forEach(function(i){
+    if(tasks[i]) tasks[i].date = newDate;
+  });
+  selectedIndices.clear();
+  document.getElementById('selectAllBox').checked = false;
   await saveTasks();
   render();
 }
