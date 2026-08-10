@@ -220,7 +220,7 @@
 
     <div class="range-box">
       <h2>Leave log</h2>
-      <div class="add-grid" style="grid-template-columns:1fr 0.8fr 0.8fr 0.8fr auto;margin-bottom:14px;">
+      <div class="add-grid" style="grid-template-columns:1fr 0.8fr 0.8fr 0.8fr auto;margin-bottom:10px;">
         <select id="leaveAssigneeInput"></select>
         <select id="leaveTypeInput">
           <option value="Annual">Annual</option>
@@ -229,6 +229,11 @@
         <input type="date" id="leaveFromInput">
         <input type="date" id="leaveToInput">
         <button onclick="addLeave()">Log leave</button>
+      </div>
+      <div style="font-size:12px;color:var(--slate);margin:14px 0 4px;">The dropdown above is for <b>adding</b> a new leave entry. To filter the log below, use this:</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+        <label for="leaveLogFilter" style="font-size:13px;color:var(--slate);font-weight:600;">Show log for:</label>
+        <select id="leaveLogFilter"></select>
       </div>
       <div id="leaveLog"></div>
     </div>
@@ -553,7 +558,7 @@ function render(){
   }).join('');
 
   // who's on leave today
-  const leaveToday = tasks.filter(function(t){ return t.isLeave && t.date === currentDate(); });
+  const leaveToday = tasks.filter(function(t){ return t.isLeave && t.date === currentDate() && (!currentAssigneeFilter() || t.assignee === currentAssigneeFilter()); });
   const leaveEl = document.getElementById('leaveBanner');
   if(leaveToday.length > 0){
     leaveEl.innerHTML = leaveToday.map(function(t){
@@ -603,20 +608,78 @@ function render(){
   renderLeaveLog();
 }
 
+let editingLeaveIndex = null;
+
 function renderLeaveLog(){
   const el = document.getElementById('leaveLog');
   if(!el) return;
-  const leaveEntries = tasks.filter(function(t){ return t.isLeave; })
+  const filterSel = document.getElementById('leaveLogFilter');
+  const person = filterSel ? filterSel.value : '';
+  const leaveEntries = tasks.filter(function(t){ return t.isLeave && (!person || t.assignee === person); })
     .slice()
     .sort(function(a, b){ return b.date.localeCompare(a.date); });
   if(leaveEntries.length === 0){
-    el.innerHTML = '<div class="empty">No leave logged yet.</div>';
+    el.innerHTML = '<div class="empty">' + (person ? 'No leave logged for ' + person + '.' : 'No leave logged yet.') + '</div>';
     return;
   }
   el.innerHTML = leaveEntries.map(function(t){
+    const i = tasks.indexOf(t);
+    if(i === editingLeaveIndex){
+      const options = ASSIGNEES.map(function(n){
+        return '<option' + (n === t.assignee ? ' selected' : '') + '>' + n + '</option>';
+      }).join('');
+      return '' +
+        '<div class="prod-row">' +
+          '<div class="edit-row">' +
+            '<span style="font-weight:600;">' + t.date + '</span>' +
+            '<select id="editLeaveAssignee_' + i + '">' + options + '</select>' +
+            '<select id="editLeaveType_' + i + '">' +
+              '<option value="Annual"' + (t.leaveType === 'Annual' ? ' selected' : '') + '>Annual</option>' +
+              '<option value="Sick"' + (t.leaveType === 'Sick' ? ' selected' : '') + '>Sick</option>' +
+            '</select>' +
+            '<button class="save" onclick="saveEditLeave(' + i + ')">Save</button>' +
+            '<button class="cancel" onclick="cancelEditLeave()">Cancel</button>' +
+          '</div>' +
+        '</div>';
+    }
     const cls = t.leaveType === 'Sick' ? 'sick' : '';
-    return '<div class="prod-row"><span>' + t.date + ' \u2014 ' + (t.assignee || 'Unassigned') + '</span><span class="leave-banner ' + cls + '">' + t.leaveType + ' Leave</span></div>';
+    return '' +
+      '<div class="prod-row">' +
+        '<span>' + t.date + ' \u2014 ' + (t.assignee || 'Unassigned') + '</span>' +
+        '<span style="display:flex;align-items:center;gap:8px;">' +
+          '<span class="leave-banner ' + cls + '">' + t.leaveType + ' Leave</span>' +
+          '<button class="edit-btn" onclick="startEditLeave(' + i + ')" style="font-size:12px;padding:5px 10px;">Edit</button>' +
+          '<button class="del" onclick="deleteLeave(' + i + ')" aria-label="Delete">&times;</button>' +
+        '</span>' +
+      '</div>';
   }).join('');
+}
+
+function startEditLeave(i){
+  editingLeaveIndex = i;
+  render();
+}
+
+function cancelEditLeave(){
+  editingLeaveIndex = null;
+  render();
+}
+
+async function saveEditLeave(i){
+  const newAssignee = document.getElementById('editLeaveAssignee_' + i).value;
+  const newType = document.getElementById('editLeaveType_' + i).value;
+  tasks[i].assignee = newAssignee;
+  tasks[i].leaveType = newType;
+  tasks[i].text = newType + ' Leave';
+  editingLeaveIndex = null;
+  await saveTasks();
+  render();
+}
+
+async function deleteLeave(i){
+  tasks.splice(i, 1);
+  await saveTasks();
+  render();
 }
 
 function taskRowHtml(t){
@@ -694,7 +757,8 @@ function renderProductivity(dayTasks){
     minutesByPerson[name] = (minutesByPerson[name] || 0) + (t.minutes || 0);
   });
   const leaveByPerson = {};
-  tasks.filter(function(t){ return t.isLeave && t.date === day; }).forEach(function(t){
+  const personFilter = currentAssigneeFilter();
+  tasks.filter(function(t){ return t.isLeave && t.date === day && (!personFilter || t.assignee === personFilter); }).forEach(function(t){
     leaveByPerson[t.assignee || 'Unassigned'] = t.leaveType;
   });
 
@@ -1094,11 +1158,17 @@ populateProcessSelect();
 fillAssigneeSelect('assigneeInput', 'Assignee');
 fillAssigneeSelect('manualAssigneeInput', 'Assignee');
 fillAssigneeSelect('leaveAssigneeInput', 'Assignee');
+fillAssigneeSelect('leaveLogFilter', 'Everyone');
+document.getElementById('leaveLogFilter').addEventListener('change', renderLeaveLog);
 fillAssigneeSelect('assigneeFilter', 'All people');
 populateAdminRef();
 document.getElementById('volInput').addEventListener('input', updatePreview);
 document.getElementById('dateFilter').addEventListener('change', render);
-document.getElementById('assigneeFilter').addEventListener('change', render);
+document.getElementById('assigneeFilter').addEventListener('change', function(){
+  const leaveSel = document.getElementById('leaveAssigneeInput');
+  if(leaveSel && this.value) leaveSel.value = this.value;
+  render();
+});
 document.getElementById('dateFilter').value = todayStr();
 
 async function init(){
