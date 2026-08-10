@@ -64,6 +64,7 @@
     </div>
     <div class="badge" id="countBadge">0 open</div>
   </header>
+  <div id="syncStatus" style="font-size:12.5px;color:var(--slate);margin-bottom:10px;"></div>
 
   <div class="toolbar">
     <label for="dateFilter">Day:</label>
@@ -319,36 +320,29 @@ async function deleteTask(i){
   render();
 }
 
-const GH_OWNER = 'ntarek72-ai';
-const GH_REPO = 'Admins-Dashboard';
-const GH_PATH = 'tasks.json';
-const GH_TOKEN = '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';
-const GH_API = 'https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + GH_PATH;
-let currentSha = null;
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxzI0DPZOtDkFDoaoP_XZE5szuWc2aZNqofE6a9Zy-GGA298u4tMNF5MlOjKsYRu5HDAw/exec';
 let saving = false;
 
-function utf8ToB64(str){
-  return btoa(unescape(encodeURIComponent(str)));
-}
-function b64ToUtf8(str){
-  return decodeURIComponent(escape(atob(str)));
+function setSyncStatus(msg, isError){
+  const el = document.getElementById('syncStatus');
+  if(!el) return;
+  el.textContent = msg;
+  el.style.color = isError ? 'var(--danger)' : 'var(--slate)';
 }
 
 async function loadTasks(){
   try{
-    const res = await fetch(GH_API, {
-      headers: {
-        'Authorization': 'token ' + GH_TOKEN,
-        'Accept': 'application/vnd.github+json'
-      }
-    });
-    if(!res.ok){ tasks = []; return; }
-    const data = await res.json();
-    currentSha = data.sha;
-    const content = b64ToUtf8(data.content.replace(/\n/g, ''));
-    tasks = content ? JSON.parse(content) : [];
+    setSyncStatus('Loading...');
+    const res = await fetch(APPS_SCRIPT_URL);
+    if(!res.ok){
+      const body = await res.text();
+      setSyncStatus('Load failed: HTTP ' + res.status + ' - ' + body.slice(0, 150), true);
+      return;
+    }
+    tasks = await res.json();
+    setSyncStatus('Synced just now');
   }catch(e){
-    console.error('Load failed', e);
+    setSyncStatus('Load error: ' + e.message, true);
   }
 }
 
@@ -356,47 +350,20 @@ async function saveTasks(){
   if(saving) return;
   saving = true;
   try{
-    const body = {
-      message: 'Update tasks ' + new Date().toISOString(),
-      content: utf8ToB64(JSON.stringify(tasks)),
-      sha: currentSha
-    };
-    const res = await fetch(GH_API, {
-      method: 'PUT',
-      headers: {
-        'Authorization': 'token ' + GH_TOKEN,
-        'Accept': 'application/vnd.github+json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(body)
+    setSyncStatus('Saving...');
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(tasks)
     });
     if(res.ok){
-      const data = await res.json();
-      currentSha = data.content.sha;
-    } else if(res.status === 409){
-      // sha mismatch (someone else saved first) - reload then retry once
-      await loadTasks();
-      const retryBody = {
-        message: 'Update tasks ' + new Date().toISOString(),
-        content: utf8ToB64(JSON.stringify(tasks)),
-        sha: currentSha
-      };
-      const retry = await fetch(GH_API, {
-        method: 'PUT',
-        headers: {
-          'Authorization': 'token ' + GH_TOKEN,
-          'Accept': 'application/vnd.github+json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(retryBody)
-      });
-      if(retry.ok){
-        const rdata = await retry.json();
-        currentSha = rdata.content.sha;
-      }
+      setSyncStatus('Saved just now');
+    } else {
+      const errBody = await res.text();
+      setSyncStatus('Save failed: HTTP ' + res.status + ' - ' + errBody.slice(0, 150), true);
     }
   }catch(e){
-    console.error('Save failed', e);
+    setSyncStatus('Save error: ' + e.message, true);
   }
   saving = false;
 }
