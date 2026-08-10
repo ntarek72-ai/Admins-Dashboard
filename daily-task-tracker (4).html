@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Task Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1B2436; --slate:#48566E; --paper:#F5F3EE; --card:#FFFFFF;
+    --line:#E3E0D6; --brand:#0E9F8E; --brand-dark:#0B7A6D;
+    --warn:#C97A2B; --danger:#C0392B; --done:#2F7A4F;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',sans-serif;line-height:1.5;}
+  h1,h2{font-family:'Manrope',sans-serif;font-weight:800;}
+  .wrap{max-width:1000px;margin:0 auto;padding:24px 18px 60px;}
+  header{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px;}
+  header h1{font-size:24px;margin:0;}
+  header .sub{font-size:13px;color:var(--slate);}
+  .badge{background:var(--brand-dark);color:#fff;padding:6px 14px;border-radius:999px;font-size:13px;font-weight:700;}
+
+  .toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+  .toolbar label{font-size:13px;color:var(--slate);font-weight:600;}
+  .toolbar input[type=date]{padding:8px 10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;}
+  .toolbar button.today{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;font-family:inherit;}
+
+  .add-box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:20px;}
+  .add-grid{display:grid;grid-template-columns:1.8fr 0.9fr 1fr 1fr auto;gap:8px;}
+  @media (max-width:760px){.add-grid{grid-template-columns:1fr 1fr;}}
+  .add-grid input, .add-grid select{padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;background:#fff;}
+  .add-grid button{background:var(--brand);color:#fff;border:none;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer;font-family:inherit;}
+  .add-grid button:hover{background:var(--brand-dark);}
+
+  .task{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .task.done{opacity:.55;}
+  .task .title{flex:1;min-width:180px;font-weight:600;font-size:14.5px;}
+  .task .title.done{text-decoration:line-through;}
+  .task .assignee{font-size:12.5px;color:var(--slate);background:var(--paper);padding:3px 10px;border-radius:999px;}
+  .task .time{font-size:13px;font-weight:700;min-width:90px;text-align:center;}
+  .time.ok{color:var(--slate);}
+  .time.warn{color:var(--warn);}
+  .time.late{color:var(--danger);}
+  .time.done{color:var(--done);}
+  .task button.done-btn{border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:600;}
+  .task button.done-btn.is-done{background:var(--done);color:#fff;border-color:var(--done);}
+  .task button.del{border:none;background:none;color:var(--danger);cursor:pointer;font-size:16px;padding:4px;}
+  .empty{color:var(--slate);text-align:center;padding:30px;font-size:14px;}
+
+  .prod-table{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:24px;}
+  .prod-table h2{font-size:16px;margin:0 0 10px;}
+  .prod-row{display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--line);font-size:14px;}
+  .prod-row:first-child{border-top:none;}
+  .prod-row b{font-family:'Manrope',sans-serif;color:var(--brand-dark);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Daily tasks</h1>
+      <div class="sub">Shared with everyone who has this link &middot; filter by day below</div>
+    </div>
+    <div class="badge" id="countBadge">0 open</div>
+  </header>
+
+  <div class="toolbar">
+    <label for="dateFilter">Day:</label>
+    <input type="date" id="dateFilter">
+    <button class="today" onclick="setToday()">Today</button>
+  </div>
+
+  <div class="add-box">
+    <div class="add-grid">
+      <select id="processSelect"></select>
+      <input type="number" id="volInput" placeholder="Volume" min="1">
+      <input type="text" id="assigneeInput" placeholder="Assignee">
+      <input type="text" id="noteInput" placeholder="Note (optional)">
+      <button onclick="addSmartTask()">Add</button>
+    </div>
+    <div id="previewLine" style="font-size:12.5px;color:var(--slate);margin-top:8px;"></div>
+  </div>
+
+  <div id="taskList"></div>
+
+  <div class="prod-table">
+    <h2>Productivity by person &mdash; selected day</h2>
+    <div id="prodList"></div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'daily-tasks-v1';
+let tasks = [];
+
+// rate = claims per minute, cap8 = claims per 8h shift (used as the daily target denominator)
+const PROCESSES = {
+  "Chronic": {
+    "Generate Claim": { rate: 60, cap8: 28800 },
+    "Printing": { rate: 20, cap8: 9600 },
+    "Matching (Stapling)": { rate: 20, cap8: 9600 },
+    "Matching & Stamping": { rate: 12, cap8: 5760 },
+    "Invoicing": { rate: 20, cap8: 9600 },
+    "Stamping": { rate: 30, cap8: 14400 },
+    "Uploading": { rate: 15, cap8: 7200 },
+    "Invoicing & Uploading": { rate: 8.57, cap8: 4114 },
+    "Full cycle incl. Uploading (300)": { rate: 3.75, cap8: 1800 },
+    "Full cycle (300)": { rate: 5, cap8: 2400 },
+    "Generate+Print+Staple+Stamp (300)": { rate: 6.67, cap8: 3200 },
+    "Totals Review": { rate: 3.33, cap8: 1600 },
+    "AWB / Numbering Updated": { rate: 14.29, cap8: 6857 },
+    "AWB / Sorting": { rate: 10, cap8: 4800 },
+    "AWB / Arranging": { rate: 10, cap8: 4800 },
+    "AWB / Stapling + shortages": { rate: 10, cap8: 4800 },
+    "Tawoon count/tally": { rate: 0.3125, cap8: 150 },
+    "Nice Deer review": { rate: 10, cap8: 4800 },
+  },
+  "Acute": {
+    "AWB (full workflow)": { awb: true },
+    "Printing/Matching/Invoicing/Stamping": { rate: 1.42, cap8: 680 },
+    "Printing": { rate: 5.67, cap8: 2720 },
+    "Matching/Invoicing/Stamping": { rate: 1.89, cap8: 907 },
+    "Invoicing from network": { rate: 11.67, cap8: 5600 },
+    "Separating into payers": { rate: 8.33, cap8: 4000 },
+    "Uploading VPN sheet": { rate: 1.5, cap8: 720 },
+    "Uploading WALK IN sheet": { rate: 1.33, cap8: 640 },
+    "Stamping": { rate: 30, cap8: 14400 },
+    "Stapling": { rate: 20, cap8: 9600 },
+    "Invoicing": { rate: 20, cap8: 9600 },
+  },
+  "Acute — admin": {
+    "VPN updating sheet": { fixedMinutes: 45 },
+    "Walk In updating sheet": { fixedMinutes: 45 },
+    "Acute tracker sheet update": { fixedMinutes: 120 },
+  },
+  "Collections": {
+    "Invoicing": { rate: 20, cap8: 9600 },
+    "Scanning": { rate: 60, cap8: 28800 },
+    "Counting / Separating": { rate: 15, cap8: 7200 },
+  },
+  "Collections — admin": {
+    "Missing mails": { fixedMinutes: 180 },
+    "Daily update sheets": { fixedMinutes: 90 },
+    "Bulk tracker update": { fixedMinutes: 120 },
+    "Bulk sending received mail": { fixedMinutes: 60 },
+  },
+};
+
+const AWB_STEPS = [
+  { label: "Numbering", rate: 14.29, cap8: 6857 },
+  { label: "Separating", rate: 10, cap8: 4800 },
+  { label: "Arranging", rate: 10, cap8: 4800 },
+  { label: "Matching", rate: 10, cap8: 4800 },
+];
+
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function setToday(){
+  document.getElementById('dateFilter').value = todayStr();
+  render();
+}
+
+function populateProcessSelect(){
+  const sel = document.getElementById('processSelect');
+  let html = '';
+  Object.keys(PROCESSES).forEach(group => {
+    html += '<optgroup label="' + group + '">';
+    Object.keys(PROCESSES[group]).forEach(name => {
+      html += '<option value="' + group + '::' + name + '">' + name + '</option>';
+    });
+    html += '</optgroup>';
+  });
+  sel.innerHTML = html;
+  sel.addEventListener('change', updatePreview);
+}
+
+function getSelectedProcess(){
+  const val = document.getElementById('processSelect').value;
+  const parts = val.split('::');
+  const group = parts[0];
+  const name = parts[1];
+  return { group: group, name: name, proc: PROCESSES[group][name] };
+}
+
+function updatePreview(){
+  const sel = getSelectedProcess();
+  const proc = sel.proc;
+  const vol = parseFloat(document.getElementById('volInput').value) || 0;
+  const preview = document.getElementById('previewLine');
+
+  if(proc.fixedMinutes){
+    preview.textContent = 'Fixed duration: ' + proc.fixedMinutes + ' min';
+    return;
+  }
+  if(!vol){ preview.textContent = ''; return; }
+  if(proc.awb){
+    let total = 0;
+    const parts = AWB_STEPS.map(function(s){
+      const m = Math.ceil(vol / s.rate);
+      total += m;
+      return s.label + ' ' + m + 'm';
+    });
+    preview.textContent = parts.join(' \u2192 ') + ' \u2022 total ' + total + 'm';
+  } else {
+    const m = Math.ceil(vol / proc.rate);
+    preview.textContent = 'Estimated: ' + m + ' min';
+  }
+}
+
+async function addSmartTask(){
+  const sel = getSelectedProcess();
+  const group = sel.group, name = sel.name, proc = sel.proc;
+  const note = document.getElementById('noteInput').value.trim();
+  const assignee = document.getElementById('assigneeInput').value.trim();
+  const vol = parseFloat(document.getElementById('volInput').value) || 0;
+  const suffix = note ? ' \u2014 ' + note : '';
+  const date = document.getElementById('dateFilter').value || todayStr();
+
+  if(proc.fixedMinutes){
+    tasks.push({ text: name + suffix, assignee: assignee, minutes: proc.fixedMinutes, start: Date.now(), status: 'open', date: date, category: group, cap8: null, vol: null });
+  } else {
+    if(!vol) return;
+    let cursor = Date.now();
+    if(proc.awb){
+      AWB_STEPS.forEach(function(s){
+        const minutes = Math.ceil(vol / s.rate);
+        tasks.push({ text: 'AWB ' + s.label + ' (' + vol + ')' + suffix, assignee: assignee, minutes: minutes, start: cursor, status: 'open', date: date, category: group, cap8: s.cap8, vol: vol });
+        cursor += minutes * 60000;
+      });
+    } else {
+      const minutes = Math.ceil(vol / proc.rate);
+      tasks.push({ text: name + ' (' + vol + ')' + suffix, assignee: assignee, minutes: minutes, start: cursor, status: 'open', date: date, category: group, cap8: proc.cap8, vol: vol });
+    }
+  }
+
+  document.getElementById('volInput').value = '';
+  document.getElementById('assigneeInput').value = '';
+  document.getElementById('noteInput').value = '';
+  document.getElementById('previewLine').textContent = '';
+  await saveTasks();
+  render();
+}
+
+function fmtTimeLeft(t){
+  if(t.status === 'done') return {text: 'Done', cls: 'done'};
+  const due = t.start + t.minutes * 60000;
+  const diff = due - Date.now();
+  const mins = Math.round(diff / 60000);
+  if(mins < 0) return {text: Math.abs(mins) + 'm late', cls: 'late'};
+  if(mins <= 10) return {text: mins + 'm left', cls: 'warn'};
+  return {text: mins + 'm left', cls: 'ok'};
+}
+
+function currentDate(){
+  return document.getElementById('dateFilter').value || todayStr();
+}
+
+function render(){
+  const day = currentDate();
+  const dayTasks = tasks.filter(function(t){ return t.date === day; });
+  const list = document.getElementById('taskList');
+  const openCount = dayTasks.filter(function(t){ return t.status !== 'done'; }).length;
+  document.getElementById('countBadge').textContent = openCount + ' open';
+
+  if(dayTasks.length === 0){
+    list.innerHTML = '<div class="empty">No tasks for this day yet.</div>';
+  } else {
+    list.innerHTML = dayTasks.map(function(t){
+      const i = tasks.indexOf(t);
+      const tl = fmtTimeLeft(t);
+      const isDone = t.status === 'done';
+      return '' +
+        '<div class="task ' + (isDone ? 'done' : '') + '">' +
+          '<div class="title ' + (isDone ? 'done' : '') + '">' + t.text + '</div>' +
+          '<div class="assignee">' + (t.assignee || '\u2014') + '</div>' +
+          '<div class="time ' + tl.cls + '">' + tl.text + '</div>' +
+          '<button class="done-btn ' + (isDone ? 'is-done' : '') + '" onclick="toggleDone(' + i + ')">' + (isDone ? 'Done' : 'Mark done') + '</button>' +
+          '<button class="del" onclick="deleteTask(' + i + ')" aria-label="Delete">&times;</button>' +
+        '</div>';
+    }).join('');
+  }
+
+  renderProductivity(dayTasks);
+}
+
+function renderProductivity(dayTasks){
+  const byPerson = {};
+  dayTasks.forEach(function(t){
+    if(t.status !== 'done') return;
+    if(!t.cap8 || !t.vol) return;
+    const name = t.assignee || 'Unassigned';
+    const pct = (t.vol / t.cap8) * 100;
+    byPerson[name] = (byPerson[name] || 0) + pct;
+  });
+  const el = document.getElementById('prodList');
+  const names = Object.keys(byPerson);
+  if(names.length === 0){
+    el.innerHTML = '<div class="empty">No completed claim-based tasks for this day yet.</div>';
+    return;
+  }
+  el.innerHTML = names.map(function(n){
+    return '<div class="prod-row"><span>' + n + '</span><b>' + byPerson[n].toFixed(1) + '%</b></div>';
+  }).join('');
+}
+
+async function toggleDone(i){
+  tasks[i].status = tasks[i].status === 'done' ? 'open' : 'done';
+  await saveTasks();
+  render();
+}
+
+async function deleteTask(i){
+  tasks.splice(i, 1);
+  await saveTasks();
+  render();
+}
+
+const GH_OWNER = 'ntarek72-ai';
+const GH_REPO = 'Admins-Dashboard';
+const GH_PATH = 'tasks.json';
+const GH_TOKEN = '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';
+const GH_API = 'https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + GH_PATH;
+let currentSha = null;
+let saving = false;
+
+function utf8ToB64(str){
+  return btoa(unescape(encodeURIComponent(str)));
+}
+function b64ToUtf8(str){
+  return decodeURIComponent(escape(atob(str)));
+}
+
+async function loadTasks(){
+  try{
+    const res = await fetch(GH_API, {
+      headers: {
+        'Authorization': 'token ' + GH_TOKEN,
+        'Accept': 'application/vnd.github+json'
+      }
+    });
+    if(!res.ok){ tasks = []; return; }
+    const data = await res.json();
+    currentSha = data.sha;
+    const content = b64ToUtf8(data.content.replace(/\n/g, ''));
+    tasks = content ? JSON.parse(content) : [];
+  }catch(e){
+    console.error('Load failed', e);
+  }
+}
+
+async function saveTasks(){
+  if(saving) return;
+  saving = true;
+  try{
+    const body = {
+      message: 'Update tasks ' + new Date().toISOString(),
+      content: utf8ToB64(JSON.stringify(tasks)),
+      sha: currentSha
+    };
+    const res = await fetch(GH_API, {
+      method: 'PUT',
+      headers: {
+        'Authorization': 'token ' + GH_TOKEN,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    if(res.ok){
+      const data = await res.json();
+      currentSha = data.content.sha;
+    } else if(res.status === 409){
+      // sha mismatch (someone else saved first) - reload then retry once
+      await loadTasks();
+      const retryBody = {
+        message: 'Update tasks ' + new Date().toISOString(),
+        content: utf8ToB64(JSON.stringify(tasks)),
+        sha: currentSha
+      };
+      const retry = await fetch(GH_API, {
+        method: 'PUT',
+        headers: {
+          'Authorization': 'token ' + GH_TOKEN,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(retryBody)
+      });
+      if(retry.ok){
+        const rdata = await retry.json();
+        currentSha = rdata.content.sha;
+      }
+    }
+  }catch(e){
+    console.error('Save failed', e);
+  }
+  saving = false;
+}
+
+populateProcessSelect();
+document.getElementById('volInput').addEventListener('input', updatePreview);
+document.getElementById('dateFilter').addEventListener('change', render);
+document.getElementById('dateFilter').value = todayStr();
+
+async function init(){
+  await loadTasks();
+  render();
+}
+init();
+
+setInterval(render, 30000);
+setInterval(async function(){
+  await loadTasks();
+  render();
+}, 20000);
+</script>
+</body>
+</html>
