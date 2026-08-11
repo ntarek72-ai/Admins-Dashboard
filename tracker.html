@@ -469,6 +469,11 @@ function findLeaveIndex(day, name){
   return -1;
 }
 
+function isWeekend(dateStr){
+  const day = new Date(dateStr + 'T00:00:00').getDay(); // 5 = Friday, 6 = Saturday
+  return day === 5 || day === 6;
+}
+
 async function addLeave(){
   const name = document.getElementById('leaveAssigneeInput').value;
   const type = document.getElementById('leaveTypeInput').value;
@@ -477,6 +482,7 @@ async function addLeave(){
   if(!name || !from) return;
 
   dateRange(from, to).forEach(function(d){
+    if(isWeekend(d)) return; // Friday/Saturday are not workdays, don't count as leave
     const existingIdx = findLeaveIndex(d, name);
     if(existingIdx !== -1){
       tasks[existingIdx].leaveType = type;
@@ -610,9 +616,12 @@ function render(){
 
 let editingLeaveIndex = null;
 
-function nextDay(dateStr){
-  const d = new Date(dateStr + 'T00:00:00');
+function nextWorkDay(dateStr){
+  let d = new Date(dateStr + 'T00:00:00');
   d.setDate(d.getDate() + 1);
+  while(d.getDay() === 5 || d.getDay() === 6){ // skip Friday & Saturday
+    d.setDate(d.getDate() + 1);
+  }
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
 
@@ -629,7 +638,7 @@ function groupLeaveRanges(entries){
     const list = byKey[key].slice().sort(function(a, b){ return a.task.date.localeCompare(b.task.date); });
     let run = [list[0]];
     for(let i = 1; i < list.length; i++){
-      if(list[i].task.date === nextDay(run[run.length - 1].task.date)){
+      if(list[i].task.date === nextWorkDay(run[run.length - 1].task.date)){
         run.push(list[i]);
       } else {
         ranges.push(run);
