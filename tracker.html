@@ -625,6 +625,12 @@ function nextWorkDay(dateStr){
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
 
+function nextCalendarDay(dateStr){
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + 1);
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
 function groupLeaveRanges(entries){
   // entries: array of {task, index}, already filtered. Group by assignee+type, then merge consecutive dates.
   const byKey = {};
@@ -638,7 +644,10 @@ function groupLeaveRanges(entries){
     const list = byKey[key].slice().sort(function(a, b){ return a.task.date.localeCompare(b.task.date); });
     let run = [list[0]];
     for(let i = 1; i < list.length; i++){
-      if(list[i].task.date === nextWorkDay(run[run.length - 1].task.date)){
+      const prev = run[run.length - 1].task.date;
+      // matches either a literal back-to-back day (older entries that still include weekends)
+      // or a workday-skip over a Fri/Sat gap (newer entries that no longer store weekends)
+      if(list[i].task.date === nextCalendarDay(prev) || list[i].task.date === nextWorkDay(prev)){
         run.push(list[i]);
       } else {
         ranges.push(run);
