@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sales vs Claim Station Comparison</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --ink:#1B2436; --slate:#48566E; --paper:#F5F3EE; --card:#FFFFFF;
+    --line:#E3E0D6; --brand:#0E9F8E; --brand-dark:#0B7A6D;
+    --warn:#C97A2B; --danger:#C0392B; --done:#2F7A4F;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',sans-serif;line-height:1.5;}
+  h1,h2,h3{font-family:'Manrope',sans-serif;font-weight:800;}
+  .wrap{max-width:1100px;margin:0 auto;padding:24px 18px 60px;}
+  header h1{font-size:24px;margin:0;}
+  header .sub{font-size:13px;color:var(--slate);margin-top:4px;}
+
+  .upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:22px 0;}
+  @media (max-width:760px){.upload-grid{grid-template-columns:1fr;}}
+  .upload-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;}
+  .upload-card h3{font-size:15px;margin:0 0 4px;}
+  .upload-card .hint{font-size:12.5px;color:var(--slate);margin-bottom:12px;}
+  .upload-card input[type=file]{width:100%;font-size:13px;}
+  .upload-card .status{font-size:12.5px;color:var(--brand-dark);margin-top:8px;font-weight:600;}
+
+  .map-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px;}
+  .map-row label{font-size:11.5px;color:var(--slate);font-weight:600;display:block;margin-bottom:3px;}
+  .map-row select{width:100%;padding:7px;border-radius:6px;border:1px solid var(--line);font-family:inherit;font-size:12.5px;}
+
+  .compare-btn{background:var(--brand);color:#fff;border:none;border-radius:8px;padding:12px 24px;font-weight:700;font-size:15px;cursor:pointer;font-family:inherit;}
+  .compare-btn:hover{background:var(--brand-dark);}
+  .compare-btn:disabled{background:var(--line);color:var(--slate);cursor:not-allowed;}
+
+  .cycle-block{background:var(--card);border:1px solid var(--line);border-radius:12px;margin-top:20px;overflow:hidden;}
+  .cycle-head{background:var(--ink);color:#fff;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;}
+  .cycle-head h3{margin:0;font-size:15px;}
+  .cycle-head .meta{font-size:12.5px;color:#C7CEDC;}
+  .cycle-body{padding:14px 18px;}
+  .cycle-body.collapsed{display:none;}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead th{text-align:left;padding:8px 10px;color:var(--slate);font-weight:700;font-size:11.5px;text-transform:uppercase;border-bottom:2px solid var(--line);}
+  tbody td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top;}
+  tbody tr:last-child td{border-bottom:none;}
+  .payer-name{font-weight:700;}
+  .status-breakdown{font-size:11.5px;color:var(--slate);margin-top:2px;}
+  .total-num{font-weight:800;font-family:'Manrope',sans-serif;font-size:15px;}
+  .gap-pos{color:var(--done);}
+  .gap-neg{color:var(--danger);}
+  .gap-zero{color:var(--slate);}
+
+  .filter-bar{display:none;background:var(--card);border:2px solid var(--brand);border-radius:12px;padding:14px 18px;margin-top:20px;}
+  .filter-bar.active{display:block;}
+  .filter-group-label{font-size:12.5px;color:var(--brand-dark);font-weight:700;margin-bottom:10px;}
+  .filter-group-row{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;}
+  .filter-field{min-width:180px;}
+  .filter-field label{font-size:11.5px;color:var(--slate);font-weight:700;display:block;margin-bottom:4px;text-transform:uppercase;}
+  .filter-field select{width:100%;padding:8px;border-radius:6px;border:1px solid var(--line);font-family:inherit;font-size:13px;background:#fff;}
+  .filter-apply{background:var(--brand);color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:700;}
+  .filter-apply:hover{background:var(--brand-dark);}
+  .filter-clear{border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:9px 14px;font-size:12.5px;cursor:pointer;font-family:inherit;font-weight:600;color:var(--slate);}
+  .filter-clear:hover{background:var(--line);}
+
+  .single-result{background:var(--ink);color:#fff;border-radius:12px;padding:18px 20px;margin-top:18px;}
+  .single-result .sr-title{font-family:'Manrope',sans-serif;font-weight:800;font-size:16px;margin-bottom:10px;}
+  .single-result .sr-nums{display:flex;gap:26px;flex-wrap:wrap;margin-bottom:10px;}
+  .single-result .sr-num-block .sr-label{font-size:11px;color:#C7CEDC;text-transform:uppercase;font-weight:700;}
+  .single-result .sr-num-block .sr-val{font-family:'Manrope',sans-serif;font-weight:800;font-size:22px;}
+  .single-result .sr-breakdowns{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:6px;text-align:center;}
+  @media (max-width:600px){.single-result .sr-breakdowns{grid-template-columns:1fr;}}
+  .single-result .sr-bd-title{font-size:11.5px;color:#C7CEDC;font-weight:700;text-transform:uppercase;margin-bottom:4px;}
+  .single-result .sr-bd-body{font-size:13px;color:#EDEFF4;line-height:1.7;}
+
+  .flag-status{color:var(--danger) !important;font-weight:800;}
+  .bd-sep{border:none;border-top:1px dashed var(--line);margin:5px 0;}
+  .single-result .bd-sep{border-top:1px dashed #4A5670;}
+
+  .login-gate{position:fixed;inset:0;background:var(--paper);display:flex;align-items:center;justify-content:center;z-index:999;padding:20px;}
+  .login-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:32px 30px;max-width:340px;width:100%;box-shadow:0 8px 30px rgba(27,36,54,0.08);text-align:center;}
+  .login-card .login-title{font-family:'Manrope',sans-serif;font-weight:800;font-size:26px;color:var(--brand-dark);margin:0 0 4px;}
+  .login-card .lc-sub{font-size:13px;color:var(--slate);margin-bottom:22px;font-weight:600;}
+  .login-card label{font-size:11.5px;color:var(--slate);font-weight:700;display:block;margin-bottom:5px;text-transform:uppercase;text-align:left;}
+  .login-card input{width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:14px;margin-bottom:14px;}
+  .login-card button{width:100%;background:var(--brand);color:#fff;border:none;border-radius:8px;padding:11px;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit;}
+  .login-card button:hover{background:var(--brand-dark);}
+  .powered-by{font-size:11px;color:var(--slate);text-transform:uppercase;letter-spacing:0.3px;font-weight:600;}
+  .powered-by b{color:var(--brand-dark);font-weight:800;}
+  .login-powered{margin-top:20px;}
+  .app-powered{text-align:center;margin-top:36px;padding-top:16px;border-top:1px solid var(--line);}
+  .login-error{color:var(--danger);font-size:12.5px;font-weight:600;margin-top:10px;display:none;}
+  .app-hidden{display:none;}
+
+  .empty{color:var(--slate);text-align:center;padding:30px;font-size:14px;}
+  .export-btn{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:600;margin-top:20px;}
+</style>
+</head>
+<body>
+<div class="login-gate" id="loginGate">
+  <div class="login-card">
+    <div class="login-title">Yodawy</div>
+    <div class="lc-sub">Station Comparison</div>
+    <label>Username</label>
+    <input type="text" id="loginUser" autocomplete="username">
+    <label>Password</label>
+    <input type="password" id="loginPass" autocomplete="current-password">
+    <button onclick="tryLogin()">Sign In</button>
+    <div class="login-error" id="loginError">Incorrect username or password.</div>
+    <div class="powered-by login-powered">POWERED BY <b>NADA ONSY</b></div>
+  </div>
+</div>
+<div class="wrap app-hidden" id="appWrap">
+  <header>
+    <h1>Sales vs Claim Station</h1>
+    <div class="sub">Upload today's exports from both stations to see the gap, cycle by cycle.</div>
+  </header>
+
+  <div class="upload-grid">
+    <div class="upload-card">
+      <h3>Sales Station export</h3>
+      <div class="hint">CSV or Excel file with Cycle, Payer, and Status columns.</div>
+      <input type="file" id="salesFile" accept=".csv,.xlsx,.xls">
+      <div class="status" id="salesStatus"></div>
+      <div class="map-row" id="salesMap" style="display:none;">
+        <div><label>Cycle column</label><select id="salesCycleCol"></select></div>
+        <div><label>Payer column</label><select id="salesPayerCol"></select></div>
+        <div><label>Status column</label><select id="salesStatusCol"></select></div>
+      </div>
+    </div>
+    <div class="upload-card">
+      <h3>Claim Station export</h3>
+      <div class="hint">CSV or Excel file with Cycle, Payer, and Status columns.</div>
+      <input type="file" id="claimFile" accept=".csv,.xlsx,.xls">
+      <div class="status" id="claimStatus"></div>
+      <div class="map-row" id="claimMap" style="display:none;">
+        <div><label>Cycle column</label><select id="claimCycleCol"></select></div>
+        <div><label>Payer column</label><select id="claimPayerCol"></select></div>
+        <div><label>Status column</label><select id="claimStatusCol"></select></div>
+      </div>
+    </div>
+  </div>
+
+  <button class="compare-btn" id="compareBtn" onclick="runCompare()" disabled>Compare</button>
+  <button class="export-btn" id="exportBtn" onclick="exportCSV()" style="display:none;">Export comparison (CSV)</button>
+
+  <div class="filter-bar" id="filterBar">
+    <div class="filter-group-label">One filter: choose the Cycle and Company together, then click "Show Result"</div>
+    <div class="filter-group-row">
+      <div class="filter-field">
+        <label>Cycle</label>
+        <select id="cycleFilter"><option value="">All</option></select>
+      </div>
+      <div class="filter-field">
+        <label>Company (Payer)</label>
+        <select id="payerFilter"><option value="">All</option></select>
+      </div>
+      <button class="filter-apply" onclick="applyFilters()">Show Result</button>
+      <button class="filter-clear" onclick="clearFilters()">Clear Filter</button>
+    </div>
+  </div>
+
+  <div id="singleResult"></div>
+  <div id="results"></div>
+
+  <div class="app-powered">
+    <div class="powered-by">POWERED BY <b>NADA ONSY</b></div>
+  </div>
+</div>
+
+<script>
+const GATE_USER = 'OnsyHQ';
+const GATE_PASS = 'Claims@2026';
+
+function tryLogin(){
+  const u = document.getElementById('loginUser').value.trim();
+  const p = document.getElementById('loginPass').value;
+  if(u === GATE_USER && p === GATE_PASS){
+    document.getElementById('loginGate').style.display = 'none';
+    document.getElementById('appWrap').classList.remove('app-hidden');
+  } else {
+    document.getElementById('loginError').style.display = 'block';
+  }
+}
+
+document.getElementById('loginPass').addEventListener('keydown', function(e){
+  if(e.key === 'Enter') tryLogin();
+});
+
+let salesData = null, claimData = null;
+let lastComparison = null;
+
+function guessColumn(headers, keywords){
+  const lower = headers.map(h => String(h).toLowerCase().trim());
+  for(const kw of keywords){
+    const exactIdx = lower.findIndex(h => h === kw);
+    if(exactIdx !== -1) return headers[exactIdx];
+  }
+  for(const kw of keywords){
+    const idx = lower.findIndex(h => h.includes(kw));
+    if(idx !== -1) return headers[idx];
+  }
+  return headers[0] || '';
+}
+
+function parseFile(file, callback){
+  const reader = new FileReader();
+  reader.onload = function(e){
+    let rows;
+    if(file.name.toLowerCase().endsWith('.csv')){
+      const wb = XLSX.read(e.target.result, { type: 'string' });
+      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+    } else {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+    }
+    callback(rows);
+  };
+  if(file.name.toLowerCase().endsWith('.csv')){
+    reader.readAsText(file);
+  } else {
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+function setupUpload(inputId, statusId, mapId, cycleSelId, payerSelId, statusSelId, storeKey, cycleKw, payerKw, statusKw){
+  document.getElementById(inputId).addEventListener('change', function(e){
+    const file = e.target.files[0];
+    if(!file) return;
+    parseFile(file, function(rows){
+      if(storeKey === 'sales') salesData = rows; else claimData = rows;
+      document.getElementById(statusId).textContent = 'Loaded ' + rows.length + ' rows.';
+      const headers = rows.length ? Object.keys(rows[0]) : [];
+      const cycleSel = document.getElementById(cycleSelId);
+      const payerSel = document.getElementById(payerSelId);
+      const statusSel = document.getElementById(statusSelId);
+      [cycleSel, payerSel, statusSel].forEach(sel => {
+        sel.innerHTML = headers.map(h => '<option>' + h + '</option>').join('');
+      });
+      cycleSel.value = guessColumn(headers, cycleKw);
+      payerSel.value = guessColumn(headers, payerKw);
+      statusSel.value = guessColumn(headers, statusKw);
+      document.getElementById(mapId).style.display = 'grid';
+      checkReady();
+    });
+  });
+}
+
+function checkReady(){
+  document.getElementById('compareBtn').disabled = !(salesData && claimData);
+}
+
+setupUpload('salesFile', 'salesStatus', 'salesMap', 'salesCycleCol', 'salesPayerCol', 'salesStatusCol', 'sales',
+  ['cycle'],
+  ['customer', 'payer', 'company', 'insurer', 'client'],
+  ['delivery situation name', 'status', 'situation', 'stage']);
+setupUpload('claimFile', 'claimStatus', 'claimMap', 'claimCycleCol', 'claimPayerCol', 'claimStatusCol', 'claim',
+  ['cycle'],
+  ['related company', 'company', 'payer'],
+  ['stage', 'status']);
+
+const EXCLUDED_STATUSES = new Set([
+  'returned', 'reverse transport:return rx', 'will be returned'
+]);
+
+function buildIndex(rows, cycleCol, payerCol, statusCol){
+  // { cycle: { payer: { total, statusCounts: {status: count} } } }
+  const idx = {};
+  rows.forEach(function(r){
+    const status = String(r[statusCol] || 'Unknown').trim() || 'Unknown';
+    if(EXCLUDED_STATUSES.has(status.toLowerCase().trim())) return;
+    const cycle = String(r[cycleCol] || 'Unspecified').trim() || 'Unspecified';
+    const payer = String(r[payerCol] || 'Unspecified').trim() || 'Unspecified';
+    if(!idx[cycle]) idx[cycle] = {};
+    if(!idx[cycle][payer]) idx[cycle][payer] = { total: 0, statusCounts: {} };
+    idx[cycle][payer].total += 1;
+    idx[cycle][payer].statusCounts[status] = (idx[cycle][payer].statusCounts[status] || 0) + 1;
+  });
+  return idx;
+}
+
+const FLAGGED_STATUSES = new Set([
+  'delivered to customer', 'failed attempt', 'in progress',
+  'node transfer', 'out for delivery', 'routed to pharmacy', 'scheduled to route'
+]);
+
+function fmtBreakdown(statusCounts){
+  return Object.keys(statusCounts).sort().map(function(s){ return s + ': ' + statusCounts[s]; }).join(' \u00b7 ');
+}
+
+function fmtBreakdownLines(statusCounts){
+  const keys = Object.keys(statusCounts).sort();
+  const normal = keys.filter(function(s){ return !FLAGGED_STATUSES.has(s.toLowerCase().trim()); });
+  const flagged = keys.filter(function(s){ return FLAGGED_STATUSES.has(s.toLowerCase().trim()); });
+  const normalLines = normal.map(function(s){ return s + ': ' + statusCounts[s]; });
+  const flaggedLines = flagged.map(function(s){ return '<span class="flag-status">' + s + ': ' + statusCounts[s] + '</span>'; });
+  let out = normalLines.join('<br>');
+  if(flaggedLines.length){
+    if(normalLines.length) out += '<hr class="bd-sep">';
+    out += flaggedLines.join('<br>');
+  }
+  return out;
+}
+
+function runCompare(){
+  const sCycleCol = document.getElementById('salesCycleCol').value;
+  const sPayerCol = document.getElementById('salesPayerCol').value;
+  const sStatusCol = document.getElementById('salesStatusCol').value;
+  const cCycleCol = document.getElementById('claimCycleCol').value;
+  const cPayerCol = document.getElementById('claimPayerCol').value;
+  const cStatusCol = document.getElementById('claimStatusCol').value;
+
+  const salesIdx = buildIndex(salesData, sCycleCol, sPayerCol, sStatusCol);
+  const claimIdx = buildIndex(claimData, cCycleCol, cPayerCol, cStatusCol);
+
+  const allCycles = Array.from(new Set(Object.keys(salesIdx).concat(Object.keys(claimIdx)))).sort();
+
+  const comparison = allCycles.map(function(cycle){
+    const salesPayers = salesIdx[cycle] || {};
+    const claimPayers = claimIdx[cycle] || {};
+    const allPayers = Array.from(new Set(Object.keys(salesPayers).concat(Object.keys(claimPayers)))).sort();
+    const rows = allPayers.map(function(payer){
+      const s = salesPayers[payer] || { total: 0, statusCounts: {} };
+      const c = claimPayers[payer] || { total: 0, statusCounts: {} };
+      return { payer: payer, salesTotal: s.total, salesBreakdown: s.statusCounts, claimTotal: c.total, claimBreakdown: c.statusCounts, gap: s.total - c.total };
+    });
+    return { cycle: cycle, rows: rows, salesTotal: rows.reduce((a,r)=>a+r.salesTotal,0), claimTotal: rows.reduce((a,r)=>a+r.claimTotal,0) };
+  });
+
+  lastComparison = comparison;
+  populateFilters(comparison);
+  applyFilters();
+  document.getElementById('exportBtn').style.display = 'inline-block';
+  document.getElementById('filterBar').classList.add('active');
+}
+
+function populateFilters(comparison){
+  const cycleSel = document.getElementById('cycleFilter');
+  const payerSel = document.getElementById('payerFilter');
+  const prevCycle = cycleSel.value, prevPayer = payerSel.value;
+
+  const cycles = comparison.map(function(c){ return c.cycle; });
+  const payersSet = new Set();
+  comparison.forEach(function(c){ c.rows.forEach(function(r){ payersSet.add(r.payer); }); });
+  const payers = Array.from(payersSet).sort();
+
+  cycleSel.innerHTML = '<option value="">All cycles</option>' + cycles.map(function(c){ return '<option value="' + c + '">' + c + '</option>'; }).join('');
+  payerSel.innerHTML = '<option value="">All companies</option>' + payers.map(function(p){ return '<option value="' + p + '">' + p + '</option>'; }).join('');
+
+  if(cycles.indexOf(prevCycle) !== -1) cycleSel.value = prevCycle;
+  if(payers.indexOf(prevPayer) !== -1) payerSel.value = prevPayer;
+}
+
+function applyFilters(){
+  if(!lastComparison) return;
+  const cycleVal = document.getElementById('cycleFilter').value;
+  const payerVal = document.getElementById('payerFilter').value;
+  const singleEl = document.getElementById('singleResult');
+
+  let filtered = lastComparison;
+  if(cycleVal) filtered = filtered.filter(function(c){ return c.cycle === cycleVal; });
+  if(payerVal){
+    filtered = filtered.map(function(c){
+      const rows = c.rows.filter(function(r){ return r.payer === payerVal; });
+      return { cycle: c.cycle, rows: rows, salesTotal: rows.reduce((a,r)=>a+r.salesTotal,0), claimTotal: rows.reduce((a,r)=>a+r.claimTotal,0) };
+    }).filter(function(c){ return c.rows.length > 0; });
+  }
+
+  // When BOTH cycle and company are chosen together, show one combined summary card
+  if(cycleVal && payerVal){
+    if(filtered.length === 0 || filtered[0].rows.length === 0){
+      singleEl.innerHTML = '<div class="single-result"><div class="sr-title">' + payerVal + ' — ' + cycleVal + '</div><div>No data for this company in this cycle.</div></div>';
+    } else {
+      const r = filtered[0].rows[0];
+      const gapCls = r.gap > 0 ? 'gap-neg' : (r.gap < 0 ? 'gap-pos' : 'gap-zero');
+      const gapText = r.gap > 0 ? '+' + r.gap : r.gap;
+      singleEl.innerHTML = '' +
+        '<div class="single-result">' +
+          '<div class="sr-title">' + r.payer + ' — ' + cycleVal + '</div>' +
+          '<div class="sr-nums">' +
+            '<div class="sr-num-block"><div class="sr-label">Sales Station</div><div class="sr-val">' + r.salesTotal + '</div></div>' +
+            '<div class="sr-num-block"><div class="sr-label">Claim Station</div><div class="sr-val">' + r.claimTotal + '</div></div>' +
+            '<div class="sr-num-block"><div class="sr-label">Gap</div><div class="sr-val ' + gapCls + '">' + gapText + '</div></div>' +
+          '</div>' +
+          '<div class="sr-breakdowns">' +
+            '<div><div class="sr-bd-title">Sales Status</div><div class="sr-bd-body">' + (fmtBreakdownLines(r.salesBreakdown) || '—') + '</div></div>' +
+            '<div><div class="sr-bd-title">Claim Stage</div><div class="sr-bd-body">' + (fmtBreakdownLines(r.claimBreakdown) || '—') + '</div></div>' +
+          '</div>' +
+        '</div>';
+    }
+  } else {
+    singleEl.innerHTML = '';
+  }
+
+  renderResults(filtered);
+}
+
+function clearFilters(){
+  document.getElementById('cycleFilter').value = '';
+  document.getElementById('payerFilter').value = '';
+  document.getElementById('singleResult').innerHTML = '';
+  applyFilters();
+}
+
+function renderResults(comparison){
+  const el = document.getElementById('results');
+  if(comparison.length === 0){
+    el.innerHTML = '<div class="empty">No data found.</div>';
+    return;
+  }
+  el.innerHTML = comparison.map(function(c, ci){
+    const rowsHtml = c.rows.map(function(r){
+      const gapCls = r.gap > 0 ? 'gap-neg' : (r.gap < 0 ? 'gap-pos' : 'gap-zero');
+      const gapText = r.gap > 0 ? '+' + r.gap : r.gap;
+      return '' +
+        '<tr>' +
+          '<td class="payer-name">' + r.payer + '</td>' +
+          '<td><div class="total-num">' + r.salesTotal + '</div><div class="status-breakdown">' + fmtBreakdownLines(r.salesBreakdown) + '</div></td>' +
+          '<td><div class="total-num">' + r.claimTotal + '</div><div class="status-breakdown">' + fmtBreakdownLines(r.claimBreakdown) + '</div></td>' +
+          '<td class="total-num ' + gapCls + '">' + gapText + '</td>' +
+        '</tr>';
+    }).join('');
+    const cycleGap = c.salesTotal - c.claimTotal;
+    const cycleGapCls = cycleGap > 0 ? 'gap-neg' : (cycleGap < 0 ? 'gap-pos' : 'gap-zero');
+    const cycleGapText = cycleGap > 0 ? '+' + cycleGap : cycleGap;
+    return '' +
+      '<div class="cycle-block">' +
+        '<div class="cycle-head" onclick="toggleCycle(' + ci + ')">' +
+          '<h3>' + c.cycle + '</h3>' +
+          '<div class="meta">Sales: ' + c.salesTotal + ' \u00b7 Claim: ' + c.claimTotal + ' \u00b7 Gap: <span class="' + cycleGapCls + '" style="font-weight:800;">' + cycleGapText + '</span></div>' +
+        '</div>' +
+        '<div class="cycle-body" id="cycleBody' + ci + '">' +
+          '<table>' +
+            '<thead><tr><th>Payer</th><th>Sales Station (Status)</th><th>Claim Station (Stage)</th><th>Gap</th></tr></thead>' +
+            '<tbody>' + rowsHtml + '</tbody>' +
+          '</table>' +
+        '</div>' +
+      '</div>';
+  }).join('');
+}
+
+function toggleCycle(i){
+  document.getElementById('cycleBody' + i).classList.toggle('collapsed');
+}
+
+function csvEscape(val){
+  const s = String(val == null ? '' : val);
+  if(s.indexOf(',') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\n') !== -1){
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function exportCSV(){
+  if(!lastComparison) return;
+  let csv = ['Cycle', 'Payer', 'Sales Total', 'Sales Breakdown', 'Claim Total', 'Claim Breakdown', 'Gap'].map(csvEscape).join(',') + '\n';
+  lastComparison.forEach(function(c){
+    c.rows.forEach(function(r){
+      csv += [c.cycle, r.payer, r.salesTotal, fmtBreakdown(r.salesBreakdown), r.claimTotal, fmtBreakdown(r.claimBreakdown), r.gap].map(csvEscape).join(',') + '\n';
+    });
+  });
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'sales_vs_claim_comparison.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
