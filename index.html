@@ -246,19 +246,14 @@ const DATA = {
       ["Print AWB from Odoo", "1 claim / 2 min", 240],
       ["Matching (Stapling)", "300 claims / 15 min", 9600],
       ["Matching & Stamping", "300 claims / 25 min", 5760],
-      ["Invoicing", "300 claims / 15 min", 9600],
       ["Stamping", "300 claims / 10 min", 14400],
-      ["Uploading", "300 claims / 20 min", 7200],
-      ["Invoicing & Uploading", "300 claims / 35 min", 4114],
-      ["Full cycle incl. Uploading", "300 claims / 80 min", 1800],
-      ["Full cycle", "300 claims / 60 min", 2400],
-      ["Generate+Print+Staple+Stamp", "300 claims / 45 min", 3200],
-      ["Totals Review", "100 claims / 30 min", 1600],
+      ["Invoicing & Uploading", "300 claims / 20 min", 7200],
+      ["Full cycle", "300 claims / 45 min", 3200],
       ["AWB / Numbering Updated", "100 claims / 7 min", 6857],
       ["AWB / Sorting", "100 claims / 10 min", 4800],
       ["AWB / Arranging", "100 claims / 10 min", 4800],
       ["AWB / Stapling + shortages", "100 claims / 10 min", 4800],
-      ["Tawoon count/tally", "150 / 480 min", 150],
+      ["Tawoon count/tally", "200 / 480 min", 200],
       ["Nice Deer review", "600 claims / hr", 4800],
     ],
     fixed: []
@@ -267,16 +262,15 @@ const DATA = {
     label: "Acute",
     color: "acute",
     tasks: [
-      ["Printing / Matching / Invoicing / Stamping", "85 claims / hr", 680],
-      ["Printing Acute", "85 claims / 15 min", 2720],
-      ["Matching / Invoicing / Stamping Acute", "85 claims / 45 min", 907],
+      ["Printing / Matching / Invoicing / Stamping", "100 claims / hr", 800],
+      ["Printing Acute", "100 claims / 15 min", 3200],
+      ["Matching / Invoicing / Stamping Acute", "125 claims / hr", 1000],
       ["Invoicing claims received from network", "700 claims / hr", 5600],
       ["Separating claims received from network into payers", "500 claims / hr", 4000],
       ["Uploading claims into VPN sheet", "90 claims / hr", 720],
       ["Uploading WALK IN into VPN sheet", "80 claims / hr", 640],
-      ["Stamping", "1800 claims / hr", 14400],
-      ["Stapling", "1200 claims / hr", 9600],
-      ["Invoicing", "1200 claims / hr", 9600],
+      ["Acute reviewing", "100 claims / 20 min", 2400],
+      ["Petrojet count/tally", "250 / 480 min", 250],
     ],
     fixed: [
       ["VPN updating sheet", "45 min"],
@@ -348,6 +342,16 @@ function fillTasks(){
   });
 }
 
+function fmtDuration(hours){
+  if(hours <= 0) return '0m';
+  const totalMinutes = Math.round(hours * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if(h === 0) return m + 'm';
+  if(m === 0) return h + 'h';
+  return h + 'h ' + m + 'm';
+}
+
 function calc(){
   const cat = DATA[catSel.value];
   const task = cat.tasks[taskSel.value];
@@ -361,7 +365,7 @@ function calc(){
   const hoursNeeded = capPerHour > 0 ? vol / capPerHour : 0;
   const peopleNeeded = capPerShift > 0 ? Math.ceil(vol / capPerShift) : 0;
 
-  document.getElementById('outHours').textContent = fmt(hoursNeeded);
+  document.getElementById('outHours').textContent = fmtDuration(hoursNeeded);
   document.getElementById('outPeople').textContent = fmt(peopleNeeded);
   document.getElementById('outCap').textContent = fmt(capPerShift);
 }

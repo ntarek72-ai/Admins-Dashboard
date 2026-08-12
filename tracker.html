@@ -235,6 +235,7 @@
         <label for="leaveLogFilter" style="font-size:13px;color:var(--slate);font-weight:600;">Show log for:</label>
         <select id="leaveLogFilter"></select>
       </div>
+      <div id="leaveTotalSummary" style="font-size:14px;margin-bottom:12px;"></div>
       <div id="leaveLog"></div>
     </div>
 
@@ -276,33 +277,27 @@ const PROCESSES = {
     "Print AWB from Odoo": { rate: 0.5, cap8: 240 },
     "Matching (Stapling)": { rate: 20, cap8: 9600 },
     "Matching & Stamping": { rate: 12, cap8: 5760 },
-    "Invoicing": { rate: 20, cap8: 9600 },
     "Stamping": { rate: 30, cap8: 14400 },
-    "Uploading": { rate: 15, cap8: 7200 },
-    "Invoicing & Uploading": { rate: 8.57, cap8: 4114 },
-    "Full cycle incl. Uploading": { rate: 3.75, cap8: 1800 },
-    "Full cycle": { rate: 5, cap8: 2400 },
-    "Generate+Print+Staple+Stamp": { rate: 6.67, cap8: 3200 },
-    "Totals Review": { rate: 3.33, cap8: 1600 },
+    "Invoicing & Uploading": { rate: 15, cap8: 7200 },
+    "Full cycle": { rate: 6.67, cap8: 3200 },
     "AWB / Numbering Updated": { rate: 14.29, cap8: 6857 },
     "AWB / Sorting": { rate: 10, cap8: 4800 },
     "AWB / Arranging": { rate: 10, cap8: 4800 },
     "AWB / Stapling + shortages": { rate: 10, cap8: 4800 },
-    "Tawoon count/tally": { rate: 0.3125, cap8: 150 },
+    "Tawoon count/tally": { rate: 0.4167, cap8: 200 },
     "Nice Deer review": { rate: 10, cap8: 4800 },
     "AWB (full workflow)": { awb: true },
   },
   "Acute": {
-    "Printing/Matching/Invoicing/Stamping": { rate: 1.42, cap8: 680 },
-    "Printing": { rate: 5.67, cap8: 2720 },
-    "Matching/Invoicing/Stamping": { rate: 1.89, cap8: 907 },
+    "Printing/Matching/Invoicing/Stamping": { rate: 1.6667, cap8: 800 },
+    "Printing": { rate: 6.6667, cap8: 3200 },
+    "Matching/Invoicing/Stamping": { rate: 2.0833, cap8: 1000 },
     "Invoicing from network": { rate: 11.67, cap8: 5600 },
     "Separating into payers": { rate: 8.33, cap8: 4000 },
     "Uploading VPN sheet": { rate: 1.5, cap8: 720 },
     "Uploading WALK IN sheet": { rate: 1.33, cap8: 640 },
-    "Stamping": { rate: 30, cap8: 14400 },
-    "Stapling": { rate: 20, cap8: 9600 },
-    "Invoicing": { rate: 20, cap8: 9600 },
+    "Acute reviewing": { rate: 5, cap8: 2400 },
+    "Petrojet count/tally": { rate: 0.5208, cap8: 250 },
   },
   "Acute — admin": {
     "VPN updating sheet": { fixedMinutes: 45 },
@@ -668,6 +663,19 @@ function renderLeaveLog(){
   const entries = tasks
     .map(function(t, i){ return { task: t, index: i }; })
     .filter(function(e){ return e.task.isLeave && (!person || e.task.assignee === person); });
+
+  const summaryEl = document.getElementById('leaveTotalSummary');
+  if(summaryEl){
+    if(person && entries.length > 0){
+      const annualCount = entries.filter(function(e){ return e.task.leaveType === 'Annual'; }).length;
+      const sickCount = entries.filter(function(e){ return e.task.leaveType === 'Sick'; }).length;
+      const total = annualCount + sickCount;
+      summaryEl.innerHTML = '<b>' + person + '</b> \u2014 total leave: <b>' + total + '</b> day' + (total === 1 ? '' : 's') +
+        ' <span style="color:var(--slate);font-weight:400;">(' + annualCount + ' Annual, ' + sickCount + ' Sick)</span>';
+    } else {
+      summaryEl.innerHTML = '';
+    }
+  }
 
   if(entries.length === 0){
     el.innerHTML = '<div class="empty">' + (person ? 'No leave logged for ' + person + '.' : 'No leave logged yet.') + '</div>';
