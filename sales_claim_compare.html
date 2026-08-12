@@ -20,6 +20,11 @@
   header h1{font-size:24px;margin:0;}
   header .sub{font-size:13px;color:var(--slate);margin-top:4px;}
 
+  .data-banner{background:#EAF6F3;border:1px solid #BFE4DC;color:var(--brand-dark);border-radius:10px;padding:12px 16px;margin:18px 0;font-size:13px;font-weight:600;}
+  .data-banner.warn{background:#FBF0E4;border-color:#E9CDA0;color:var(--warn);}
+  .admin-toggle{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:8px 14px;font-size:12.5px;cursor:pointer;font-family:inherit;font-weight:600;color:var(--slate);margin-bottom:14px;}
+  .admin-toggle:hover{background:var(--line);}
+
   .upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:22px 0;}
   @media (max-width:760px){.upload-grid{grid-template-columns:1fr;}}
   .upload-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;}
@@ -116,10 +121,14 @@
 <div class="wrap app-hidden" id="appWrap">
   <header>
     <h1>Sales vs Claim Station</h1>
-    <div class="sub">Upload today's exports from both stations to see the gap, cycle by cycle.</div>
+    <div class="sub">Shows today's data automatically. Updated once a day by the admin.</div>
   </header>
 
-  <div class="upload-grid">
+  <div class="data-banner" id="dataBanner">Loading today's data…</div>
+
+  <button class="admin-toggle" id="adminToggle" onclick="toggleAdminUpload()" style="display:none;">Admin: upload / replace today's files</button>
+
+  <div class="upload-grid app-hidden" id="uploadGrid">
     <div class="upload-card">
       <h3>Sales Station export</h3>
       <div class="hint">CSV or Excel file with Cycle, Payer, and Status columns.</div>
@@ -144,7 +153,7 @@
     </div>
   </div>
 
-  <button class="compare-btn" id="compareBtn" onclick="runCompare()" disabled>Compare</button>
+  <button class="compare-btn app-hidden" id="compareBtn" onclick="runCompare()" disabled>Compare</button>
   <button class="export-btn" id="exportBtn" onclick="exportCSV()" style="display:none;">Export comparison (CSV)</button>
 
   <div class="filter-bar" id="filterBar">
@@ -181,6 +190,7 @@ function tryLogin(){
   if(u === GATE_USER && p === GATE_PASS){
     document.getElementById('loginGate').style.display = 'none';
     document.getElementById('appWrap').classList.remove('app-hidden');
+    autoLoadStationData();
   } else {
     document.getElementById('loginError').style.display = 'block';
   }
@@ -206,24 +216,80 @@ function guessColumn(headers, keywords){
   return headers[0] || '';
 }
 
+function rowsFromWorkbookData(data, isCsv){
+  const wb = isCsv ? XLSX.read(data, { type: 'string' }) : XLSX.read(data, { type: 'array' });
+  return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+}
+
 function parseFile(file, callback){
   const reader = new FileReader();
   reader.onload = function(e){
-    let rows;
-    if(file.name.toLowerCase().endsWith('.csv')){
-      const wb = XLSX.read(e.target.result, { type: 'string' });
-      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
-    } else {
-      const wb = XLSX.read(e.target.result, { type: 'array' });
-      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
-    }
-    callback(rows);
+    const isCsv = file.name.toLowerCase().endsWith('.csv');
+    callback(rowsFromWorkbookData(e.target.result, isCsv));
   };
   if(file.name.toLowerCase().endsWith('.csv')){
     reader.readAsText(file);
   } else {
     reader.readAsArrayBuffer(file);
   }
+}
+
+// Shared data files that live in this same repo (under /data). The admin overwrites these
+// two exact filenames each day on GitHub — everyone who opens the page then sees the new data
+// automatically, with no upload needed on their end.
+const SALES_DATA_URL = 'data/sale.order.xlsx';
+const CLAIM_DATA_URL = 'data/helpdesk.ticket.xlsx';
+
+function fetchWorkbookRows(url){
+  return fetch(url + '?v=' + Date.now(), { cache: 'no-store' }).then(function(res){
+    if(!res.ok) throw new Error('not found');
+    return res.arrayBuffer();
+  }).then(function(buf){
+    return rowsFromWorkbookData(buf, false);
+  });
+}
+
+function applyAutoRows(rows, storeKey, cycleSelId, payerSelId, statusSelId, mapId, statusId, cycleKw, payerKw, statusKw){
+  if(storeKey === 'sales') salesData = rows; else claimData = rows;
+  document.getElementById(statusId).textContent = 'Loaded ' + rows.length + ' rows.';
+  const headers = rows.length ? Object.keys(rows[0]) : [];
+  const cycleSel = document.getElementById(cycleSelId);
+  const payerSel = document.getElementById(payerSelId);
+  const statusSel = document.getElementById(statusSelId);
+  [cycleSel, payerSel, statusSel].forEach(function(sel){
+    sel.innerHTML = headers.map(function(h){ return '<option>' + h + '</option>'; }).join('');
+  });
+  cycleSel.value = guessColumn(headers, cycleKw);
+  payerSel.value = guessColumn(headers, payerKw);
+  statusSel.value = guessColumn(headers, statusKw);
+  document.getElementById(mapId).style.display = 'grid';
+}
+
+function autoLoadStationData(){
+  const banner = document.getElementById('dataBanner');
+  document.getElementById('adminToggle').style.display = 'inline-block';
+  Promise.all([fetchWorkbookRows(SALES_DATA_URL), fetchWorkbookRows(CLAIM_DATA_URL)])
+    .then(function(results){
+      applyAutoRows(results[0], 'sales', 'salesCycleCol', 'salesPayerCol', 'salesStatusCol', 'salesMap', 'salesStatus',
+        ['cycle'], ['customer', 'payer', 'company', 'insurer', 'client'], ['delivery situation name', 'status', 'situation', 'stage']);
+      applyAutoRows(results[1], 'claim', 'claimCycleCol', 'claimPayerCol', 'claimStatusCol', 'claimMap', 'claimStatus',
+        ['cycle'], ['related company', 'company', 'payer'], ['stage', 'status']);
+      checkReady();
+      runCompare();
+      banner.className = 'data-banner';
+      banner.textContent = 'Showing today\u2019s data (loaded automatically).';
+    })
+    .catch(function(){
+      banner.className = 'data-banner warn';
+      banner.textContent = 'No shared data file found yet for today \u2014 use "Admin: upload / replace today\u2019s files" below, or push data/sale.order.xlsx and data/helpdesk.ticket.xlsx to the repo.';
+      document.getElementById('uploadGrid').classList.remove('app-hidden');
+      document.getElementById('compareBtn').classList.remove('app-hidden');
+    });
+}
+
+function toggleAdminUpload(){
+  document.getElementById('uploadGrid').classList.toggle('app-hidden');
+  document.getElementById('compareBtn').classList.toggle('app-hidden');
 }
 
 function setupUpload(inputId, statusId, mapId, cycleSelId, payerSelId, statusSelId, storeKey, cycleKw, payerKw, statusKw){
