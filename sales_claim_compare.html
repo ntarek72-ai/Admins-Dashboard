@@ -101,7 +101,6 @@
   .app-hidden{display:none;}
 
   .empty{color:var(--slate);text-align:center;padding:30px;font-size:14px;}
-  .export-btn{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:600;margin-top:20px;}
 </style>
 </head>
 <body>
@@ -154,7 +153,6 @@
   </div>
 
   <button class="compare-btn app-hidden" id="compareBtn" onclick="runCompare()" disabled>Compare</button>
-  <button class="export-btn" id="exportBtn" onclick="exportCSV()" style="display:none;">Export comparison (CSV)</button>
 
   <div class="filter-bar" id="filterBar">
     <div class="filter-group-label">One filter: choose the Cycle and Company together, then click "Show Result"</div>
@@ -399,7 +397,6 @@ function runCompare(){
   lastComparison = comparison;
   populateFilters(comparison);
   applyFilters();
-  document.getElementById('exportBtn').style.display = 'inline-block';
   document.getElementById('filterBar').classList.add('active');
 }
 
@@ -510,33 +507,6 @@ function renderResults(comparison){
 
 function toggleCycle(i){
   document.getElementById('cycleBody' + i).classList.toggle('collapsed');
-}
-
-function csvEscape(val){
-  const s = String(val == null ? '' : val);
-  if(s.indexOf(',') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\n') !== -1){
-    return '"' + s.replace(/"/g, '""') + '"';
-  }
-  return s;
-}
-
-function exportCSV(){
-  if(!lastComparison) return;
-  let csv = ['Cycle', 'Payer', 'Sales Total', 'Sales Breakdown', 'Claim Total', 'Claim Breakdown', 'Gap'].map(csvEscape).join(',') + '\n';
-  lastComparison.forEach(function(c){
-    c.rows.forEach(function(r){
-      csv += [c.cycle, r.payer, r.salesTotal, fmtBreakdown(r.salesBreakdown), r.claimTotal, fmtBreakdown(r.claimBreakdown), r.gap].map(csvEscape).join(',') + '\n';
-    });
-  });
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'sales_vs_claim_comparison.csv';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 </script>
 </body>
