@@ -274,7 +274,7 @@ const ASSIGNEES = ['Mohamed Khaled','Gad ElKarem','Mohamed Orabi','Ahmed AbdelRe
 const PROCESSES = {
   "Chronic": {
     "Printing": { rate: 20, cap8: 9600 },
-    "Print AWB from Odoo": { rate: 0.5, cap8: 240 },
+    "Print AWB from Odoo": { rate: 0.8571, cap8: 411 },
     "Matching (Stapling)": { rate: 20, cap8: 9600 },
     "Matching & Stamping": { rate: 12, cap8: 5760 },
     "Stamping": { rate: 30, cap8: 14400 },
@@ -783,15 +783,23 @@ function taskRowHtml(t){
   const cat = (t.category || '').replace(' — admin', '');
   const badge = cat ? '<span class="cat-badge cat-' + cat + '">' + cat + '</span>' : '';
   const checked = selectedIndices.has(i) ? ' checked' : '';
+  const timeCell = isSupervisorUnlocked()
+    ? '<div class="time ' + tl.cls + '">' + tl.text + '</div>'
+    : '<div class="time" style="color:var(--slate);" title="Unlock supervisor view to see timing">&#128274;</div>';
   return '' +
     '<div class="task ' + (isDone ? 'done' : '') + (tl.late ? ' late' : '') + '">' +
       '<input type="checkbox"' + checked + ' onchange="toggleSelect(' + i + ', this.checked)" style="margin-right:4px;">' +
       '<div class="title ' + (isDone ? 'done' : '') + '">' + badge + t.text + '</div>' +
-      '<div class="time ' + tl.cls + '">' + tl.text + '</div>' +
+      timeCell +
       '<button class="edit-btn" onclick="startEdit(' + i + ')">Edit</button>' +
       '<button class="done-btn ' + (isDone ? 'is-done' : '') + '" onclick="toggleDone(' + i + ')">' + (isDone ? 'Done' : 'Mark done') + '</button>' +
       '<button class="del" onclick="deleteTask(' + i + ')" aria-label="Delete">&times;</button>' +
     '</div>';
+}
+
+function isSupervisorUnlocked(){
+  const el = document.getElementById('protectedZone');
+  return !!(el && el.style.display !== 'none');
 }
 
 function findOvertimeIndex(day, name){
@@ -1283,6 +1291,7 @@ function tryUnlockProtected(){
   if (p === PROTECT_PASSWORD){
     document.getElementById('protectLock').style.display = 'none';
     document.getElementById('protectedZone').style.display = 'block';
+    render();
   } else {
     document.getElementById('protectError').textContent = 'Incorrect password.';
   }
