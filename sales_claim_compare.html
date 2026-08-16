@@ -33,7 +33,8 @@
   .upload-card input[type=file]{width:100%;font-size:13px;}
   .upload-card .status{font-size:12.5px;color:var(--brand-dark);margin-top:8px;font-weight:600;}
 
-  .map-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px;}
+  .map-row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:12px;}
+  @media (max-width:760px){.map-row{grid-template-columns:1fr 1fr;}}
   .map-row label{font-size:11.5px;color:var(--slate);font-weight:600;display:block;margin-bottom:3px;}
   .map-row select{width:100%;padding:7px;border-radius:6px;border:1px solid var(--line);font-family:inherit;font-size:12.5px;}
 
@@ -101,6 +102,11 @@
   .app-hidden{display:none;}
 
   .empty{color:var(--slate);text-align:center;padding:30px;font-size:14px;}
+  .export-btn{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:600;margin-top:8px;margin-bottom:14px;}
+
+  .not-reflected-section{margin-top:34px;padding-top:20px;border-top:2px solid var(--line);}
+  .nr-header h2{font-size:19px;margin:0 0 4px;color:var(--danger);}
+  .nr-header .nr-sub{font-size:12.5px;color:var(--slate);margin-bottom:14px;max-width:720px;}
 </style>
 </head>
 <body>
@@ -137,6 +143,7 @@
         <div><label>Cycle column</label><select id="salesCycleCol"></select></div>
         <div><label>Payer column</label><select id="salesPayerCol"></select></div>
         <div><label>Status column</label><select id="salesStatusCol"></select></div>
+        <div><label>Order Reference column</label><select id="salesOrderCol"></select></div>
       </div>
     </div>
     <div class="upload-card">
@@ -148,6 +155,7 @@
         <div><label>Cycle column</label><select id="claimCycleCol"></select></div>
         <div><label>Payer column</label><select id="claimPayerCol"></select></div>
         <div><label>Status column</label><select id="claimStatusCol"></select></div>
+        <div><label>Sale Order column</label><select id="claimOrderCol"></select></div>
       </div>
     </div>
   </div>
@@ -172,6 +180,15 @@
 
   <div id="singleResult"></div>
   <div id="results"></div>
+
+  <div id="notReflectedSection" class="not-reflected-section" style="display:none;">
+    <div class="nr-header">
+      <h2>Not Reflected on Claims Station</h2>
+      <div class="nr-sub">Orders marked Collected / Collected in Hub / Claim at Warehouse / Partially Collected / Reverse Transport:Collected Claim in Sales, but not found at all in the Claim (Helpdesk) sheet.</div>
+    </div>
+    <button class="export-btn" id="nrExportBtn" onclick="exportNotReflected()" style="display:none;">Export list (CSV)</button>
+    <div id="notReflectedResults"></div>
+  </div>
 
   <div class="app-powered">
     <div class="powered-by">POWERED BY <b>NADA ONSY</b></div>
@@ -200,6 +217,8 @@ document.getElementById('loginPass').addEventListener('keydown', function(e){
 
 let salesData = null, claimData = null;
 let lastComparison = null;
+let lastNotReflectedAll = null;
+let currentNotReflected = null;
 
 function guessColumn(headers, keywords){
   const lower = headers.map(h => String(h).toLowerCase().trim());
@@ -247,19 +266,21 @@ function fetchWorkbookRows(url){
   });
 }
 
-function applyAutoRows(rows, storeKey, cycleSelId, payerSelId, statusSelId, mapId, statusId, cycleKw, payerKw, statusKw){
+function applyAutoRows(rows, storeKey, cycleSelId, payerSelId, statusSelId, orderSelId, mapId, statusId, cycleKw, payerKw, statusKw, orderKw){
   if(storeKey === 'sales') salesData = rows; else claimData = rows;
   document.getElementById(statusId).textContent = 'Loaded ' + rows.length + ' rows.';
   const headers = rows.length ? Object.keys(rows[0]) : [];
   const cycleSel = document.getElementById(cycleSelId);
   const payerSel = document.getElementById(payerSelId);
   const statusSel = document.getElementById(statusSelId);
-  [cycleSel, payerSel, statusSel].forEach(function(sel){
+  const orderSel = document.getElementById(orderSelId);
+  [cycleSel, payerSel, statusSel, orderSel].forEach(function(sel){
     sel.innerHTML = headers.map(function(h){ return '<option>' + h + '</option>'; }).join('');
   });
   cycleSel.value = guessColumn(headers, cycleKw);
   payerSel.value = guessColumn(headers, payerKw);
   statusSel.value = guessColumn(headers, statusKw);
+  orderSel.value = guessColumn(headers, orderKw);
   document.getElementById(mapId).style.display = 'grid';
 }
 
@@ -268,10 +289,12 @@ function autoLoadStationData(){
   document.getElementById('adminToggle').style.display = 'inline-block';
   Promise.all([fetchWorkbookRows(SALES_DATA_URL), fetchWorkbookRows(CLAIM_DATA_URL)])
     .then(function(results){
-      applyAutoRows(results[0], 'sales', 'salesCycleCol', 'salesPayerCol', 'salesStatusCol', 'salesMap', 'salesStatus',
-        ['cycle'], ['customer', 'payer', 'company', 'insurer', 'client'], ['delivery situation name', 'status', 'situation', 'stage']);
-      applyAutoRows(results[1], 'claim', 'claimCycleCol', 'claimPayerCol', 'claimStatusCol', 'claimMap', 'claimStatus',
-        ['cycle'], ['related company', 'company', 'payer'], ['stage', 'status']);
+      applyAutoRows(results[0], 'sales', 'salesCycleCol', 'salesPayerCol', 'salesStatusCol', 'salesOrderCol', 'salesMap', 'salesStatus',
+        ['cycle'], ['customer', 'payer', 'company', 'insurer', 'client'], ['delivery situation name', 'status', 'situation', 'stage'],
+        ['order reference', 'reference', 'order ref', 'order']);
+      applyAutoRows(results[1], 'claim', 'claimCycleCol', 'claimPayerCol', 'claimStatusCol', 'claimOrderCol', 'claimMap', 'claimStatus',
+        ['cycle'], ['related company', 'company', 'payer'], ['stage', 'status'],
+        ['sale order', 'order reference', 'reference']);
       checkReady();
       runCompare();
       banner.className = 'data-banner';
@@ -290,7 +313,7 @@ function toggleAdminUpload(){
   document.getElementById('compareBtn').classList.toggle('app-hidden');
 }
 
-function setupUpload(inputId, statusId, mapId, cycleSelId, payerSelId, statusSelId, storeKey, cycleKw, payerKw, statusKw){
+function setupUpload(inputId, statusId, mapId, cycleSelId, payerSelId, statusSelId, orderSelId, storeKey, cycleKw, payerKw, statusKw, orderKw){
   document.getElementById(inputId).addEventListener('change', function(e){
     const file = e.target.files[0];
     if(!file) return;
@@ -301,12 +324,14 @@ function setupUpload(inputId, statusId, mapId, cycleSelId, payerSelId, statusSel
       const cycleSel = document.getElementById(cycleSelId);
       const payerSel = document.getElementById(payerSelId);
       const statusSel = document.getElementById(statusSelId);
-      [cycleSel, payerSel, statusSel].forEach(sel => {
+      const orderSel = document.getElementById(orderSelId);
+      [cycleSel, payerSel, statusSel, orderSel].forEach(sel => {
         sel.innerHTML = headers.map(h => '<option>' + h + '</option>').join('');
       });
       cycleSel.value = guessColumn(headers, cycleKw);
       payerSel.value = guessColumn(headers, payerKw);
       statusSel.value = guessColumn(headers, statusKw);
+      orderSel.value = guessColumn(headers, orderKw);
       document.getElementById(mapId).style.display = 'grid';
       checkReady();
     });
@@ -317,14 +342,16 @@ function checkReady(){
   document.getElementById('compareBtn').disabled = !(salesData && claimData);
 }
 
-setupUpload('salesFile', 'salesStatus', 'salesMap', 'salesCycleCol', 'salesPayerCol', 'salesStatusCol', 'sales',
+setupUpload('salesFile', 'salesStatus', 'salesMap', 'salesCycleCol', 'salesPayerCol', 'salesStatusCol', 'salesOrderCol', 'sales',
   ['cycle'],
   ['customer', 'payer', 'company', 'insurer', 'client'],
-  ['delivery situation name', 'status', 'situation', 'stage']);
-setupUpload('claimFile', 'claimStatus', 'claimMap', 'claimCycleCol', 'claimPayerCol', 'claimStatusCol', 'claim',
+  ['delivery situation name', 'status', 'situation', 'stage'],
+  ['order reference', 'reference', 'order ref', 'order']);
+setupUpload('claimFile', 'claimStatus', 'claimMap', 'claimCycleCol', 'claimPayerCol', 'claimStatusCol', 'claimOrderCol', 'claim',
   ['cycle'],
   ['related company', 'company', 'payer'],
-  ['stage', 'status']);
+  ['stage', 'status'],
+  ['sale order', 'order reference', 'reference']);
 
 const EXCLUDED_STATUSES = new Set([
   'returned', 'reverse transport:return rx', 'will be returned'
@@ -373,9 +400,11 @@ function runCompare(){
   const sCycleCol = document.getElementById('salesCycleCol').value;
   const sPayerCol = document.getElementById('salesPayerCol').value;
   const sStatusCol = document.getElementById('salesStatusCol').value;
+  const sOrderCol = document.getElementById('salesOrderCol').value;
   const cCycleCol = document.getElementById('claimCycleCol').value;
   const cPayerCol = document.getElementById('claimPayerCol').value;
   const cStatusCol = document.getElementById('claimStatusCol').value;
+  const cOrderCol = document.getElementById('claimOrderCol').value;
 
   const salesIdx = buildIndex(salesData, sCycleCol, sPayerCol, sStatusCol);
   const claimIdx = buildIndex(claimData, cCycleCol, cPayerCol, cStatusCol);
@@ -396,6 +425,7 @@ function runCompare(){
 
   lastComparison = comparison;
   populateFilters(comparison);
+  buildNotReflected(sCycleCol, sPayerCol, sStatusCol, sOrderCol, cOrderCol);
   applyFilters();
   document.getElementById('filterBar').classList.add('active');
 }
@@ -459,6 +489,7 @@ function applyFilters(){
   }
 
   renderResults(filtered);
+  applyNotReflectedFilter();
 }
 
 function clearFilters(){
@@ -507,6 +538,141 @@ function renderResults(comparison){
 
 function toggleCycle(i){
   document.getElementById('cycleBody' + i).classList.toggle('collapsed');
+}
+
+const NOT_REFLECTED_STATUSES = new Set([
+  'collected', 'collected in hub', 'claim at warehouse',
+  'partially collected', 'reverse transport:collected claim'
+]);
+
+function buildNotReflected(sCycleCol, sPayerCol, sStatusCol, sOrderCol, cOrderCol){
+  if(!sOrderCol || !cOrderCol) { lastNotReflectedAll = null; applyNotReflectedFilter(); return; }
+
+  const claimOrderSet = new Set();
+  claimData.forEach(function(r){
+    const v = String(r[cOrderCol] || '').trim().toLowerCase();
+    if(v) claimOrderSet.add(v);
+  });
+
+  const filteredRows = salesData.filter(function(r){
+    const status = String(r[sStatusCol] || '').trim().toLowerCase();
+    if(!NOT_REFLECTED_STATUSES.has(status)) return false;
+    const orderRef = String(r[sOrderCol] || '').trim();
+    if(!orderRef) return false;
+    return !claimOrderSet.has(orderRef.toLowerCase());
+  });
+
+  const byCycle = {};
+  filteredRows.forEach(function(r){
+    const cycle = String(r[sCycleCol] || 'Unspecified').trim() || 'Unspecified';
+    const payer = String(r[sPayerCol] || 'Unspecified').trim() || 'Unspecified';
+    const orderRef = String(r[sOrderCol] || '').trim();
+    const status = String(r[sStatusCol] || '').trim();
+    if(!byCycle[cycle]) byCycle[cycle] = [];
+    byCycle[cycle].push({ payer: payer, orderRef: orderRef, status: status });
+  });
+
+  const cycles = Object.keys(byCycle).sort();
+  lastNotReflectedAll = cycles.map(function(cycle){
+    return { cycle: cycle, rows: byCycle[cycle] };
+  });
+
+  applyNotReflectedFilter();
+}
+
+function applyNotReflectedFilter(){
+  if(!lastNotReflectedAll){
+    currentNotReflected = null;
+    renderNotReflected(null);
+    return;
+  }
+  const cycleVal = document.getElementById('cycleFilter') ? document.getElementById('cycleFilter').value : '';
+  const payerVal = document.getElementById('payerFilter') ? document.getElementById('payerFilter').value : '';
+
+  let filtered = lastNotReflectedAll;
+  if(cycleVal) filtered = filtered.filter(function(c){ return c.cycle === cycleVal; });
+  if(payerVal){
+    filtered = filtered.map(function(c){
+      return { cycle: c.cycle, rows: c.rows.filter(function(r){ return r.payer === payerVal; }) };
+    }).filter(function(c){ return c.rows.length > 0; });
+  }
+
+  currentNotReflected = filtered;
+  renderNotReflected(filtered);
+}
+
+function renderNotReflected(data){
+  const section = document.getElementById('notReflectedSection');
+  const el = document.getElementById('notReflectedResults');
+  const exportBtn = document.getElementById('nrExportBtn');
+
+  if(!data){
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = 'block';
+
+  if(data.length === 0){
+    el.innerHTML = '<div class="empty">No unmatched orders found for this selection.</div>';
+    exportBtn.style.display = 'none';
+    return;
+  }
+
+  exportBtn.style.display = 'inline-block';
+  el.innerHTML = data.map(function(c, ci){
+    const rowsHtml = c.rows.map(function(r){
+      return '' +
+        '<tr>' +
+          '<td class="payer-name">' + r.orderRef + '</td>' +
+          '<td>' + r.payer + '</td>' +
+          '<td><span class="flag-status">' + r.status + '</span></td>' +
+        '</tr>';
+    }).join('');
+    return '' +
+      '<div class="cycle-block">' +
+        '<div class="cycle-head" onclick="toggleNrCycle(' + ci + ')">' +
+          '<h3>' + c.cycle + '</h3>' +
+          '<div class="meta">' + c.rows.length + ' order(s) not reflected</div>' +
+        '</div>' +
+        '<div class="cycle-body" id="nrCycleBody' + ci + '">' +
+          '<table>' +
+            '<thead><tr><th>Order Reference</th><th>Payer</th><th>Status</th></tr></thead>' +
+            '<tbody>' + rowsHtml + '</tbody>' +
+          '</table>' +
+        '</div>' +
+      '</div>';
+  }).join('');
+}
+
+function toggleNrCycle(i){
+  document.getElementById('nrCycleBody' + i).classList.toggle('collapsed');
+}
+
+function csvEscape(val){
+  const s = String(val == null ? '' : val);
+  if(s.indexOf(',') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\n') !== -1){
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function exportNotReflected(){
+  if(!currentNotReflected) return;
+  let csv = ['Cycle', 'Order Reference', 'Payer', 'Status'].map(csvEscape).join(',') + '\n';
+  currentNotReflected.forEach(function(c){
+    c.rows.forEach(function(r){
+      csv += [c.cycle, r.orderRef, r.payer, r.status].map(csvEscape).join(',') + '\n';
+    });
+  });
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'not_reflected_on_claims_station.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 </script>
 </body>
