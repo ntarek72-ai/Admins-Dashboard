@@ -90,7 +90,7 @@
   <div class="login-card">
     <div class="brand">Yodawy</div>
     <div class="tag">Retail Receipt Issue Tracker</div>
-    <input type="text" id="userInput" placeholder="Username" autocomplete="off">
+    <input type="text" id="userInput" placeholder="Email" autocomplete="off">
     <input type="password" id="passInput" placeholder="Password" autocomplete="off">
     <button onclick="tryLogin()">Sign in</button>
     <div class="login-error" id="loginError"></div>
@@ -107,7 +107,7 @@
     </div>
     <div class="badge" id="openCountBadge">0 open</div>
   </header>
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;background:#FBEADB;border:1px solid #E9C9A0;border-radius:8px;padding:8px 12px;">
+  <div id="notifyBar" style="display:none;align-items:center;gap:8px;margin-bottom:10px;background:#FBEADB;border:1px solid #E9C9A0;border-radius:8px;padding:8px 12px;">
     <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--warn);cursor:pointer;">
       <input type="checkbox" id="notifyToggle" onchange="onNotifyToggle()"> Send email notifications (new issue / resolve)
     </label>
@@ -126,6 +126,11 @@
       <input type="text" id="commentInput" placeholder="Comment">
       <button onclick="addIssue()">Add</button>
     </div>
+  </div>
+
+  <div style="margin-bottom:12px;">
+    <input type="text" id="searchBox" placeholder="Search order #, company, pharmacy, employee, comment... anything" oninput="render()"
+      style="width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--line);font-family:inherit;font-size:14px;box-sizing:border-box;">
   </div>
 
   <div class="toolbar">
@@ -254,6 +259,7 @@ async function saveIssues(){
 }
 
 async function onNotifyToggle(){
+  if(!isAdmin()) return;
   notifyEnabled = document.getElementById('notifyToggle').checked;
   await saveIssues();
 }
@@ -493,8 +499,10 @@ function render(){
         '<td style="white-space:nowrap;">' + (i.dateResolved || '\u2014') + '</td>' +
         '<td><span class="status-badge ' + statusCls + '">' + (i.status === 'Resolved' ? 'Resolved' : 'Open') + '</span></td>' +
         '<td style="white-space:nowrap;">' +
-          '<button class="resolve-btn" style="background:var(--card);color:var(--ink);border:1px solid var(--line);" onclick="startEditIssue(' + i.id + ')">Edit</button> ' +
-          '<button class="resolve-btn" style="background:var(--danger);" onclick="deleteIssue(' + i.id + ')">Delete</button>' +
+          (isAdmin() ?
+            '<button class="resolve-btn" style="background:var(--card);color:var(--ink);border:1px solid var(--line);" onclick="startEditIssue(' + i.id + ')">Edit</button> ' +
+            '<button class="resolve-btn" style="background:var(--danger);" onclick="deleteIssue(' + i.id + ')">Delete</button>'
+          : '') +
         '</td>' +
       '</tr>';
   }).join('');
@@ -527,6 +535,7 @@ function editRowHtml(i){
 }
 
 function startEditIssue(id){
+  if(!isAdmin()) return;
   editingIssueId = id;
   render();
 }
@@ -537,6 +546,7 @@ function cancelEditIssue(){
 }
 
 async function saveEditIssue(id){
+  if(!isAdmin()) return;
   const idx = issues.findIndex(function(i){ return i.id === id; });
   if(idx === -1) return;
   const get = function(field){ return document.getElementById('e_' + field + '_' + id).value; };
@@ -559,6 +569,7 @@ async function saveEditIssue(id){
 }
 
 async function deleteIssue(id){
+  if(!isAdmin()) return;
   if(!confirm('Delete this issue? This cannot be undone.')) return;
   issues = issues.filter(function(i){ return i.id !== id; });
   await saveIssues();
@@ -633,15 +644,43 @@ setInterval(async function(){
   render();
 }, 60000);
 
-const CREDENTIALS = { username: "OnsyOps", password: "Yodawy@2026" };
+const TEAM_EMAILS = {
+  "n.onsy@yodawy.com": "Nada Onsy",
+  "m.farag@yodawy.com": "Mohamed Sayed",
+  "m.maadawy@yodawy.com": "Mahmoud El Maadawy",
+  "m.taliba@yodawy.com": "Magda Taliba",
+  "k.gamal@yodawy.com": "Khaled Gamal",
+  "m.khaled@yodawy.com": "Mohamed Khaled",
+  "a.mohamed@yodawy.com": "Ahmed Mohamed",
+  "m.azzam@yodawy.com": "Mohamed Ashraf",
+  "n.moustafa@yodawy.com": "Nermin Mustafa",
+  "m.eldeen@yodawy.com": "Mohamed El Deen",
+  "f.abdelmoneim@yodawy.com": "Fatima Abdelmoneim"
+};
+const SHARED_PASSWORD = "Yodawy@2026";
+const ADMIN_EMAIL = "n.onsy@yodawy.com";
+let currentUserEmail = null;
+
+function isAdmin(){
+  return currentUserEmail === ADMIN_EMAIL;
+}
+
+function applyAdminVisibility(){
+  const notifyBar = document.getElementById('notifyBar');
+  if(notifyBar) notifyBar.style.display = isAdmin() ? 'flex' : 'none';
+}
+
 function tryLogin(){
-  const u = document.getElementById('userInput').value.trim();
+  const u = document.getElementById('userInput').value.trim().toLowerCase();
   const p = document.getElementById('passInput').value;
-  if (u === CREDENTIALS.username && p === CREDENTIALS.password){
+  if (TEAM_EMAILS[u] && p === SHARED_PASSWORD){
+    currentUserEmail = u;
     document.getElementById('loginGate').style.display = 'none';
     document.getElementById('appContent').style.display = 'block';
+    applyAdminVisibility();
+    render();
   } else {
-    document.getElementById('loginError').textContent = 'Incorrect username or password.';
+    document.getElementById('loginError').textContent = 'Incorrect email or password.';
   }
 }
 document.getElementById('passInput').addEventListener('keydown', function(e){ if(e.key==='Enter') tryLogin(); });
