@@ -157,7 +157,7 @@
           <th>Assigned To</th>
           <th>New Order # / Resolution</th>
           <th>Date Resolved</th>
-          <th>Actions</th>
+          <th id="actionsHeader" style="display:none;">Actions</th>
         </tr>
       </thead>
       <tbody id="issueBody"></tbody>
@@ -515,12 +515,12 @@ function render(){
         '<td>' + (i.assignedTo || '\u2014') + '</td>' +
         '<td>' + resolutionCell + '</td>' +
         '<td style="white-space:nowrap;">' + (i.dateResolved || '\u2014') + '</td>' +
-        '<td style="white-space:nowrap;">' +
-          (isAdmin() ?
+        (isAdmin() ?
+          '<td style="white-space:nowrap;">' +
             '<button class="resolve-btn" style="background:var(--card);color:var(--ink);border:1px solid var(--line);" onclick="startEditIssue(' + i.id + ')">Edit</button> ' +
-            '<button class="resolve-btn" style="background:var(--danger);" onclick="deleteIssue(' + i.id + ')">Delete</button>'
-          : '') +
-        '</td>' +
+            '<button class="resolve-btn" style="background:var(--danger);" onclick="deleteIssue(' + i.id + ')">Delete</button>' +
+          '</td>'
+        : '') +
       '</tr>';
   }).join('');
 }
@@ -688,6 +688,8 @@ function applyAdminVisibility(){
   if(notifyBar) notifyBar.style.display = isAdmin() ? 'flex' : 'none';
   const importBtn = document.getElementById('importBtn');
   if(importBtn) importBtn.style.display = isAdmin() ? 'inline-block' : 'none';
+  const actionsHeader = document.getElementById('actionsHeader');
+  if(actionsHeader) actionsHeader.style.display = isAdmin() ? 'table-cell' : 'none';
 }
 
 function tryLogin(){
