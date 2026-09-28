@@ -83,6 +83,10 @@
   .dur-warn{background:#FBEADB;color:var(--warn);}
   .dur-late{background:#FBEAEA;color:var(--danger);}
   .imported-tag{font-size:10px;color:var(--slate);font-style:italic;}
+  .overdue-row{background:#FDF1F0;}
+  .overdue-row:hover{background:#FBE6E4;}
+  .overdue-row td:first-child{border-left:4px solid var(--danger);}
+  .overdue-badge{display:inline-block;margin-top:4px;background:var(--danger);color:#fff;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:800;white-space:nowrap;}
 </style>
 </head>
 <body>
@@ -103,13 +107,16 @@
   <header>
     <div>
       <h1>Retail Receipt Issue Tracker</h1>
-      <div class="sub">Shared with the team &middot; email alerts on new issue &amp; resolve</div>
+      <div class="sub">Shared with the team &middot; email alerts on new issue, resolve &amp; 5-day overdue</div>
     </div>
-    <div class="badge" id="openCountBadge">0 open</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <div class="badge" id="overdueBadge" style="display:none;background:var(--danger);">0 overdue</div>
+      <div class="badge" id="openCountBadge">0 open</div>
+    </div>
   </header>
   <div id="notifyBar" style="display:none;align-items:center;gap:8px;margin-bottom:10px;background:#FBEADB;border:1px solid #E9C9A0;border-radius:8px;padding:8px 12px;">
     <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--warn);cursor:pointer;">
-      <input type="checkbox" id="notifyToggle" onchange="onNotifyToggle()"> Send email notifications (new issue / resolve)
+      <input type="checkbox" id="notifyToggle" onchange="onNotifyToggle()"> Send email notifications (new issue / resolve / 5-day reminder)
     </label>
     <span style="font-size:12px;color:var(--slate);">Off by default while you're setting things up &mdash; turn on when ready.</span>
   </div>
@@ -374,17 +381,43 @@ async function resolveIssue(id){
   });
 }
 
-function parseDateLoose(s){
+function makeValidDate(y, mo, d, h, mi, s){
+  const dt = new Date(y, mo - 1, d, h || 0, mi || 0, s || 0);
+  // reject impossible dates like 31/2 that JS would silently roll over
+  if(dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+  return dt;
+}
+
+function parseDateLoose(s, cycle){
   if(!s) return null;
+  s = String(s).trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if(m) return makeValidDate(+m[1], +m[2], +m[3], +m[4], +m[5], +m[6]);
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(m) return makeValidDate(+m[3], +m[2], +m[1]);
+  m = s.match(/^(\d{1,2})[.\-_](\d{1,2})$/);
+  if(m){
+    const cy = cycle ? String(cycle).match(/(\d{4})/) : null;
+    const year = cy ? +cy[1] : new Date().getFullYear();
+    return makeValidDate(year, +m[2], +m[1]);
+  }
   const d = new Date(s);
-  if(!isNaN(d.getTime())) return d;
-  return null;
+  return isNaN(d.getTime()) ? null : d;
+}
+
+const OVERDUE_DAYS = 5;
+
+function isOverdue(issue){
+  if(issue.status === 'Resolved') return false;
+  const start = parseDateLoose(issue.dateOpened, issue.cycle);
+  if(!start) return false;
+  return (Date.now() - start.getTime()) >= OVERDUE_DAYS * 86400000;
 }
 
 function openDurationHtml(issue){
-  const start = parseDateLoose(issue.dateOpened);
+  const start = parseDateLoose(issue.dateOpened, issue.cycle);
   if(!start) return '<span class="imported-tag">n/a</span>';
-  const end = issue.status === 'Resolved' ? parseDateLoose(issue.dateResolved) : new Date();
+  const end = issue.status === 'Resolved' ? parseDateLoose(issue.dateResolved, issue.cycle) : new Date();
   if(!end) return '<span class="imported-tag">n/a</span>';
   const ms = end - start;
   if(ms < 0) return '<span class="imported-tag">n/a</span>';
@@ -478,6 +511,10 @@ function render(){
 
   const openCount = issues.filter(function(i){ return i.status !== 'Resolved'; }).length;
   document.getElementById('openCountBadge').textContent = openCount + ' open';
+  const overdueCount = issues.filter(isOverdue).length;
+  const overdueBadge = document.getElementById('overdueBadge');
+  overdueBadge.textContent = overdueCount + ' overdue (' + OVERDUE_DAYS + '+ days)';
+  overdueBadge.style.display = overdueCount > 0 ? 'inline-block' : 'none';
 
   const body = document.getElementById('issueBody');
   if(list.length === 0){
@@ -501,10 +538,12 @@ function render(){
           '<button class="resolve-btn" onclick="resolveIssue(' + i.id + ')">Resolve</button>' +
         '</div>';
     }
+    const overdue = isOverdue(i);
     return '' +
-      '<tr>' +
+      '<tr' + (overdue ? ' class="overdue-row"' : '') + '>' +
         '<td>' + (i.cycle || '\u2014') + '</td>' +
-        '<td><span class="status-badge ' + statusCls + '">' + (i.status === 'Resolved' ? 'Resolved' : 'Open') + '</span></td>' +
+        '<td><span class="status-badge ' + statusCls + '">' + (i.status === 'Resolved' ? 'Resolved' : 'Open') + '</span>' +
+          (overdue ? '<br><span class="overdue-badge">' + OVERDUE_DAYS + '+ days</span>' : '') + '</td>' +
         '<td>' + (i.submittedBy || '\u2014') + importedTag + '</td>' +
         '<td>' + i.oldOrderNumber + '</td>' +
         '<td>' + (i.pharmacy || '\u2014') + '</td>' +
