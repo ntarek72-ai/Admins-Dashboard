@@ -77,7 +77,8 @@
   .ticket.open{border-color:var(--line-strong)}
   .t-head{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(190px,1fr) minmax(200px,.9fr);gap:18px;align-items:center;padding:14px 16px;cursor:pointer;width:100%;text-align:left;border:0;background:none}
   .order{font-weight:600;font-size:16px}
-  .sub{color:var(--muted);font-size:13px;display:flex;gap:12px;flex-wrap:wrap}
+  .sub{color:var(--muted);font-size:13px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  .origin{padding:1px 9px;border-radius:999px;background:var(--teal-bg);color:var(--teal);font-size:12px;font-weight:600}
   .snip{color:var(--ink);font-size:13.5px;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 
   .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12.5px;font-weight:600}
@@ -544,12 +545,17 @@ function statusHTML(t){
     (rl ? '<div class="stat-line' + (t.retailStatus === 'Answered' ? ' ok' : '') + '">' + esc(rl) + '</div>' : '');
 }
 
+function fromRetail(t){
+  const e = (t._events || [])[0];
+  return !!(e && e.kind === 'create' && /^Opened from the Retail Issue Tracker/.test(e.note || ''));
+}
+
 function ticketHTML(t){
   const open = S.open === t.id;
   return '<article class="ticket' + (open ? ' open' : '') + '" data-id="' + esc(t.id) + '">' +
     '<button class="t-head" type="button" data-toggle="' + esc(t.id) + '" aria-expanded="' + open + '">' +
       '<div><div class="order">' + esc(t.orderNumber) + '</div>' +
-        '<div class="sub"><span>' + esc(t.company || 'No company') + '</span><span>' + esc(t.pharmacy || 'No pharmacy') + '</span></div>' +
+        '<div class="sub"><span>' + esc(t.company || 'No company') + '</span><span>' + esc(t.pharmacy || 'No pharmacy') + '</span>' + (fromRetail(t) ? '<span class="origin">From Retail Issue Tracker</span>' : '') + '</div>' +
         (t.issue ? '<div class="snip" dir="auto">' + esc(t.issue) + '</div>' : '') + '</div>' +
       '<div>' + trailHTML(t, false) + '</div>' +
       '<div>' + statusHTML(t) + '</div>' +

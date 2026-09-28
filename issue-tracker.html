@@ -87,6 +87,7 @@
   .overdue-row:hover{background:#FBE6E4;}
   .overdue-row td:first-child{border-left:4px solid var(--danger);}
   .overdue-badge{display:inline-block;margin-top:4px;background:var(--danger);color:#fff;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:800;white-space:nowrap;}
+  .origin-tag{display:inline-block;margin-top:4px;padding:2px 9px;border-radius:999px;background:#D9F2EE;color:#0B766E;font-size:10.5px;font-weight:700;white-space:nowrap;}
   #hoModal{display:none;position:fixed;inset:0;background:rgba(27,36,54,.55);z-index:900;align-items:center;justify-content:center;padding:16px;}
   .ho-card{background:#fff;border-radius:14px;padding:22px;width:100%;max-width:420px;box-shadow:0 20px 50px rgba(0,0,0,.3);}
   .ho-card h3{margin:0 0 2px;font-size:18px;} .ho-sub{margin:0 0 14px;color:var(--slate);font-size:13px;}
@@ -428,8 +429,17 @@ async function sendIssueToHandover(issue, toEmail, note){
   }finally{ handoverBusy = false; }
 }
 
+// An issue that was opened from the Ticket Handover tracker carries "(Ticket Handover T1234ABCD)" in its comment.
+function handoverSource(i){
+  if(i.fromHandover && i.handoverId) return String(i.handoverId);
+  const m = String(i.comment || '').match(/Ticket Handover (T[0-9A-Fa-f]{8})/);
+  return m ? m[1] : null;
+}
+
 function handoverCell(i){
-  if(i.handoverId) return '<br><span class="imported-tag">Handover: ' + escHtml(i.handoverTo || 'ticket created') + '</span>';
+  const src = handoverSource(i);
+  if(src) return '<br><span class="origin-tag">From Handover Tracker</span><br><span class="imported-tag">Ticket ' + escHtml(src) + '</span>';
+  if(i.handoverId) return '<br><span class="imported-tag">Sent to Handover: ' + escHtml(i.handoverTo || 'ticket created') + '</span>';
   if(i.status === 'Resolved') return '';
   return '<br><button class="resolve-btn" style="margin-top:4px;background:var(--card);color:var(--ink);border:1px solid var(--line);" onclick="openHandoverDialog(' + i.id + ')">Send to Handover</button>';
 }
@@ -442,7 +452,7 @@ function closeHandoverDialog(){
 function openHandoverDialog(id){
   if(!needFresh()) return;
   const issue = issues.filter(function(i){ return i.id === id; })[0];
-  if(!issue || issue.handoverId) return;
+  if(!issue || issue.handoverId || handoverSource(issue)) return;
   const box = document.getElementById('hoModal');
   box.innerHTML = '<div class="ho-card">' +
     '<h3>Send to Handover</h3><p class="ho-sub">' + escHtml(issue.oldOrderNumber) + '</p>' +
