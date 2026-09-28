@@ -694,7 +694,11 @@ function ask(cfg){
   const first = form.querySelector('input,select,textarea'); if(first) first.focus();
 }
 
-function others(){ return S.users.filter(function(u){ return u.email !== S.me.email && !u.viewer; }).map(function(u){ return { value:u.email, label:u.name }; }); }
+// Everyone except viewers. Only an admin also sees herself, so she can hand a ticket to herself to try the whole flow.
+function others(){
+  return S.users.filter(function(u){ return !u.viewer && (u.email !== S.me.email || S.me.admin); })
+    .map(function(u){ return { value:u.email, label:u.name + (u.email === S.me.email ? ' (you)' : '') }; });
+}
 
 function newTicketDialog(){
   const now = new Date(), cur = MONTHS[now.getMonth()] + ' ' + now.getFullYear(), cycles = [];
