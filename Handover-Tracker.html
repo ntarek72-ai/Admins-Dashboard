@@ -78,6 +78,8 @@
   .t-head{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(190px,1fr) minmax(200px,.9fr);gap:18px;align-items:center;padding:14px 16px;cursor:pointer;width:100%;text-align:left;border:0;background:none}
   .order{font-weight:600;font-size:16px}
   .sub{color:var(--muted);font-size:13px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  .otype{padding:1px 9px;border-radius:999px;font-size:12px;font-weight:600;background:var(--slate-bg);color:var(--slate)}
+  .otype.vpn{background:#EDE9FE;color:#5B21B6} .otype.walk{background:#E0F2FE;color:#075985} .otype.chronic{background:#E6EAF0;color:#334155} .otype.none{background:transparent;color:var(--muted);border:1px dashed var(--line-strong)}
   .origin{padding:1px 9px;border-radius:999px;background:var(--teal-bg);color:var(--teal);font-size:12px;font-weight:600}
   .snip{color:var(--ink);font-size:13.5px;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 
@@ -189,6 +191,7 @@
       <select class="in" id="fCompany" aria-label="Filter by company"></select>
       <select class="in" id="fPharmacy" aria-label="Filter by pharmacy"></select>
       <select class="in" id="fHolder" aria-label="Filter by who holds the ticket"></select>
+      <select class="in" id="fType" aria-label="Filter by order type"></select>
     </div>
 
     <main id="list" aria-live="polite"></main>
@@ -209,12 +212,27 @@ const CONFIG = {
     "MISR HEALTH CARE","Mednet","City Stars","Sainco","MetLife","Egyptian Customs Authority","El Ganzory Hospital",
     "El Mashreq","GlobeMed","Next Care","HyperOne","Limitless Care","Estsharion","Seha One","EMC","Medsure","Other"]
 };
+const ORDER_TYPES = ['Chronic', 'VPN', 'Walk In'];
+// Same rule as the server: first letter of the order number, capital or small.
+// O = Walk In (this includes "Order 05095-002-0010"), Y = VPN, S = Chronic, anything else = not set.
+function inferType(n){
+  const s = String(n || '').trim();
+  if(/^o/i.test(s)) return 'Walk In';
+  if(/^y/i.test(s)) return 'VPN';
+  if(/^s/i.test(s)) return 'Chronic';
+  return '';
+}
+function typeChip(t){
+  const v = t.orderType || '';
+  const cls = v === 'VPN' ? 'vpn' : (v === 'Walk In' ? 'walk' : (v === 'Chronic' ? 'chronic' : 'none'));
+  return '<span class="otype ' + cls + '">' + esc(v || 'Type not set') + '</span>';
+}
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const CRED_KEY = 'ticket-handover-cred';
 const SNAP_KEY = 'ticket-handover-snapshot-';
 
 /* ===================== STATE ===================== */
-const S = { usage:null, loading:false, lastOk:'', preview:false, busy:0, notify:false, cred:null, me:null, users:[], tickets:[], events:[], tab:'inbox', q:'', company:'', pharmacy:'', holder:'', open:null, timer:null };
+const S = { otype:'', usage:null, loading:false, lastOk:'', preview:false, busy:0, notify:false, cred:null, me:null, users:[], tickets:[], events:[], tab:'inbox', q:'', company:'', pharmacy:'', holder:'', open:null, timer:null };
 const $ = function(s){ return document.querySelector(s); };
 
 /* ===================== HELPERS ===================== */
@@ -435,6 +453,7 @@ function fillFilters(){
   };
   $('#fCompany').innerHTML = opts(cs, 'All companies', S.company);
   $('#fPharmacy').innerHTML = opts(ps, 'All pharmacies', S.pharmacy);
+  $('#fType').innerHTML = '<option value="">All order types</option>' + ORDER_TYPES.concat(['']).map(function(v){ return '<option value="' + (v || '__none') + '"' + ((v || '__none') === S.otype ? ' selected' : '') + '>' + (v || 'Type not set') + '</option>'; }).join('');
   $('#fHolder').innerHTML = '<option value="">Anyone holding</option>' + S.users.filter(function(u){ return !u.viewer; }).map(function(u){
     return '<option value="' + esc(u.email) + '"' + (u.email === S.holder ? ' selected' : '') + '>' + esc(u.name) + '</option>'; }).join('');
 }
@@ -443,8 +462,9 @@ function passesFilters(t){
   if(S.company && t.company !== S.company) return false;
   if(S.pharmacy && t.pharmacy !== S.pharmacy) return false;
   if(S.holder && t.holder !== S.holder) return false;
+  if(S.otype && (t.orderType || '__none') !== S.otype) return false;
   if(S.q){
-    const hay = [t.orderNumber, t.company, t.pharmacy, t.issue, t.newOrderNumber, t.id].join(' ').toLowerCase();
+    const hay = [t.orderNumber, t.orderType, t.company, t.pharmacy, t.issue, t.newOrderNumber, t.id].join(' ').toLowerCase();
     if(hay.indexOf(S.q.toLowerCase()) === -1) return false;
   }
   return true;
@@ -477,7 +497,7 @@ function render(){
   rows.sort(function(a,b){ return tb.id === 'inbox' ? (a.updatedAt < b.updatedAt ? -1 : 1) : (a.updatedAt < b.updatedAt ? 1 : -1); });
 
   if(!rows.length){
-    const filtered = S.q || S.company || S.pharmacy || S.holder;
+    const filtered = S.q || S.company || S.pharmacy || S.holder || S.otype;
     $('#list').innerHTML = '<div class="empty"><b>' + esc(filtered ? 'No tickets match these filters' : tb.empty[0]) + '</b>' +
       esc(filtered ? 'Clear the search or filters to see more.' : tb.empty[1]) + '</div>';
     return;
@@ -555,7 +575,7 @@ function ticketHTML(t){
   return '<article class="ticket' + (open ? ' open' : '') + '" data-id="' + esc(t.id) + '">' +
     '<button class="t-head" type="button" data-toggle="' + esc(t.id) + '" aria-expanded="' + open + '">' +
       '<div><div class="order">' + esc(t.orderNumber) + '</div>' +
-        '<div class="sub"><span>' + esc(t.company || 'No company') + '</span><span>' + esc(t.pharmacy || 'No pharmacy') + '</span>' + (fromRetail(t) ? '<span class="origin">From Retail Issue Tracker</span>' : '') + '</div>' +
+        '<div class="sub"><span>' + esc(t.company || 'No company') + '</span><span>' + esc(t.pharmacy || 'No pharmacy') + '</span>' + typeChip(t) + (fromRetail(t) ? '<span class="origin">From Retail Issue Tracker</span>' : '') + '</div>' +
         (t.issue ? '<div class="snip" dir="auto">' + esc(t.issue) + '</div>' : '') + '</div>' +
       '<div>' + trailHTML(t, false) + '</div>' +
       '<div>' + statusHTML(t) + '</div>' +
@@ -575,6 +595,8 @@ function eventCore(e, a, b){
     case 'receive': return a + ' confirmed receipt';
     case 'retail':  return a + ' sent it to the Retail Issue Tracker (assigned to Mohamed Sayed)';
     case 'comment': return a + ' added a comment';
+    case 'type':    return a + ' changed the order type';
+    case 'retail_link': return 'Linked to an issue in the Retail Issue Tracker';
     case 'retail_done': return 'Mohamed Sayed resolved it in the Retail Issue Tracker';
     case 'resolve': return a + ' submitted it as resolved';
     default: return esc(e.kind);
@@ -582,6 +604,12 @@ function eventCore(e, a, b){
 }
 
 function actionsHTML(t){
+  const core = actionsCore(t);
+  const canType = !S.me.viewer && (t.holder === S.me.email || S.me.admin || t.createdBy === S.me.email);
+  return core + (canType ? '<button class="btn quiet" data-act="settype" data-id="' + esc(t.id) + '">Set order type</button>' : '');
+}
+
+function actionsCore(t){
   if(S.me.viewer) return '<span class="hint">You have view-only access.</span>';
   const holderIsMe = t.holder === S.me.email;
   const mine = holderIsMe || S.me.admin;
@@ -606,6 +634,7 @@ function detailHTML(t){
       '<h3>Custody trail</h3>' + trailHTML(t, true) +
       '<h3>Ticket</h3><dl class="kv">' +
         '<dt>Order</dt><dd>' + esc(t.orderNumber) + '</dd>' +
+        '<dt>Order type</dt><dd>' + esc(t.orderType || 'Not set') + '</dd>' +
         '<dt>Company</dt><dd>' + esc(t.company || '-') + '</dd>' +
         '<dt>Pharmacy</dt><dd>' + esc(t.pharmacy || '-') + '</dd>' +
         '<dt>Cycle</dt><dd>' + esc(t.cycle || '-') + '</dd>' +
@@ -670,6 +699,7 @@ function newTicketDialog(){
     before:'<div class="warn hidden" id="dupWarn"></div>',
     fields:[
       { name:'orderNumber', label:'Order number', required:true },
+      { name:'orderType', label:'Order type', type:'select', options:ORDER_TYPES, required:true, placeholder:'Choose type' },
       { name:'company', label:'Company', type:'select', options:CONFIG.COMPANIES },
       { name:'pharmacy', label:'Pharmacy', type:'select', options:CONFIG.PHARMACIES },
       { name:'cycle', label:'Cycle', type:'select', options:cycles, value:cur },
@@ -677,6 +707,11 @@ function newTicketDialog(){
       { name:'to', label:'Hand to', type:'select', options:others(), required:true, placeholder:'Choose person' }
     ],
     onOpen:function(form){
+      let typeTouched = false;
+      form.orderType.addEventListener('change', function(){ typeTouched = true; });
+      form.orderNumber.addEventListener('input', function(){
+        if(!typeTouched) form.orderType.value = inferType(form.orderNumber.value);      // suggestion only, the person can change it
+      });
       form.orderNumber.addEventListener('input', function(){
         const n = normOrder(form.orderNumber.value), box = $('#dupWarn');
         const hit = n.length > 5 ? S.tickets.filter(function(t){ return normOrder(t.orderNumber) === n; })[0] : null;
@@ -695,6 +730,11 @@ function actionDialog(kind, id){
     fields:[ { name:'to', label:'Hand to', type:'select', options:others(), required:true, placeholder:'Choose person' },
              { name:'note', label:'Note (optional)', type:'textarea', placeholder:'What changed or what needs to be done?' } ],
     run:async function(v){ const d = await api('resend', { id:id, to:v.to, note:v.note }); toast('Resent to ' + nameOf(v.to)); S.tab = 'waiting'; applyPatch(d); }
+  });
+  if(kind === 'settype') ask({
+    title:'Order type for ' + t.orderNumber, intro:'Current type: ' + (t.orderType || 'not set') + '.', confirm:'Save type',
+    fields:[ { name:'orderType', label:'Order type', type:'select', options:ORDER_TYPES, required:true, value:(t.orderType || inferType(t.orderNumber)), placeholder:'Choose type' } ],
+    run:async function(v){ const d = await api('setType', { id:id, orderType:v.orderType }); toast('Order type saved'); applyPatch(d); }
   });
   if(kind === 'comment') ask({
     title:'Comment on ' + t.orderNumber, intro:'Write what the problem is and what you did. It is saved in the ticket history.', confirm:'Save comment',
@@ -741,16 +781,16 @@ function stamp(iso){
 function plainEvent(e){
   const a = nameOf(e.from), b = nameOf(e.to), by = (e.by && e.by !== e.from && e.kind !== 'create' && e.kind !== 'reopen') ? ' (by ' + nameOf(e.by) + ')' : '';
   const t = { create:a + ' opened and sent to ' + b, resend:a + ' resent to ' + b, reopen:a + ' reopened and sent to ' + b,
-              receive:a + ' confirmed receipt', retail:a + ' sent to the Retail Issue Tracker', comment:a + ' commented', retail_done:'Mohamed Sayed resolved it in the Retail Issue Tracker', resolve:a + ' submitted as resolved' }[e.kind] || e.kind;
+              receive:a + ' confirmed receipt', retail:a + ' sent to the Retail Issue Tracker', comment:a + ' commented', type:a + ' changed the order type', retail_link:'Linked to an issue in the Retail Issue Tracker', retail_done:'Mohamed Sayed resolved it in the Retail Issue Tracker', resolve:a + ' submitted as resolved' }[e.kind] || e.kind;
   return t + by + (e.note ? ' - ' + e.note : '');
 }
 function exportCSV(){
-  const head = ['Ticket ID','Order number','Company','Pharmacy','Cycle','Issue','Status','Currently with','Opened by','Opened at','Last update',
+  const head = ['Ticket ID','Order number','Order type','Company','Pharmacy','Cycle','Issue','Status','Currently with','Opened by','Opened at','Last update',
                 'New order number','Resolution note','Retail Issue Tracker','Resolved by','Resolved at','Times handed over','Days open or to resolve','History'];
   const rows = S.tickets.slice().sort(function(a,b){ return a.createdAt < b.createdAt ? -1 : 1; }).map(function(t){
     const end = t.status === 'Resolved' && t.resolvedAt ? new Date(t.resolvedAt) : new Date();
     const days = Math.max(0, Math.floor((end - new Date(t.createdAt)) / 86400000));
-    return [t.id, t.orderNumber, t.company, t.pharmacy, t.cycle, t.issue, t.status,
+    return [t.id, t.orderNumber, t.orderType || '', t.company, t.pharmacy, t.cycle, t.issue, t.status,
             t.status === 'Resolved' ? '' : nameOf(t.holder), nameOf(t.createdBy), stamp(t.createdAt), stamp(t.updatedAt),
             t.newOrderNumber, t.resolutionNote, t.retailIssueId ? (t.retailStatus === 'Resolved' ? 'Closed on both' : (t.retailStatus === 'Answered' ? 'Sayed resolved it' : 'Open there')) : '', t.resolvedBy ? nameOf(t.resolvedBy) : '', stamp(t.resolvedAt),
             t._hops.length, days, t._events.map(function(e){ return stamp(e.at) + ' ' + plainEvent(e); }).join(' | ')];
@@ -785,6 +825,7 @@ $('#q').addEventListener('input', function(e){ S.q = e.target.value.trim(); rend
 $('#fCompany').addEventListener('change', function(e){ S.company = e.target.value; render(); });
 $('#fPharmacy').addEventListener('change', function(e){ S.pharmacy = e.target.value; render(); });
 $('#fHolder').addEventListener('change', function(e){ S.holder = e.target.value; render(); });
+$('#fType').addEventListener('change', function(e){ S.otype = e.target.value; render(); });
 $('#list').addEventListener('click', async function(e){
   const act = e.target.closest('[data-act]');
   if(act){
