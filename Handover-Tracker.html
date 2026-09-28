@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ticket Handover</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#EDF0F4; --surface:#FFFFFF; --ink:#111827; --muted:#5E6A7D; --line:#DCE1E8; --line-strong:#B9C1CD;
+    --amber:#B45309; --amber-bg:#FEF1D6;
+    --teal:#0B766E;  --teal-bg:#D9F2EE;
+    --slate:#465468; --slate-bg:#E6EAF0;
+    --danger:#B42318;
+    --radius:10px;
+    --display:'Bricolage Grotesque','Segoe UI',system-ui,sans-serif;
+    --body:'Hanken Grotesk','Segoe UI',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-padding-top:16px}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;font-variant-numeric:tabular-nums}
+  button,input,select,textarea{font:inherit;color:inherit}
+  :focus-visible{outline:3px solid #7C9CFF;outline-offset:2px}
+  .hidden{display:none !important}
+
+  /* ---------- sign in ---------- */
+  #login{min-height:100vh;display:grid;place-items:center;padding:24px}
+  .login-card{width:100%;max-width:380px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:32px 28px}
+  .login-card h1{font-family:var(--display);font-size:28px;line-height:1.1;margin:0 0 6px}
+  .login-card p{margin:0 0 22px;color:var(--muted)}
+  label.f{display:block;font-size:13px;font-weight:600;margin:0 0 5px}
+  .in{width:100%;padding:10px 12px;border:1px solid var(--line-strong);border-radius:8px;background:#fff}
+  .in:focus{border-color:var(--ink)}
+  textarea.in{resize:vertical;min-height:84px}
+  .field{margin-bottom:14px}
+  .err{color:var(--danger);font-size:13px;min-height:18px;margin:8px 0 0}
+
+  /* ---------- buttons ---------- */
+  .btn{border:1px solid var(--line-strong);background:#fff;border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer}
+  .btn:hover{background:#F6F8FA}
+  .btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
+  .btn.primary:hover{background:#000}
+  .btn.good{background:var(--teal);border-color:var(--teal);color:#fff}
+  .btn.good:hover{background:#075C56}
+  .btn:disabled{opacity:.55;cursor:default}
+  .btn.block{width:100%;padding:11px}
+  .btn.quiet{border-color:transparent;background:transparent;color:var(--muted);padding:6px 8px}
+
+  /* ---------- shell ---------- */
+  .wrap{max-width:1180px;margin:0 auto;padding:0 20px 60px}
+  .top{display:flex;align-items:center;gap:16px;padding:20px 0 14px;flex-wrap:wrap}
+  .brand{font-family:var(--display);font-size:24px;font-weight:700;margin-right:auto;letter-spacing:-.01em}
+  .who{font-size:13px;color:var(--muted);text-align:right}
+  .who b{color:var(--ink);font-weight:600}
+
+  .notify{background:var(--amber-bg);border:1px solid #F0CC8E;border-radius:var(--radius);padding:10px 14px;margin:0 0 14px;font-size:14px}
+  .notify label{display:flex;gap:10px;align-items:center;flex-wrap:wrap;cursor:pointer}
+  .notify b{color:var(--amber)} .notify span{color:#7A3B06;font-size:13px}
+  .stats{display:flex;gap:28px;flex-wrap:wrap;margin:0 0 14px}
+  .stat b{display:block;font-family:var(--display);font-size:26px;line-height:1.1}
+  .stat span{font-size:13px;color:var(--muted)}
+  .stat.open b{color:var(--ink)} .stat.sent b{color:var(--amber)} .stat.recv b{color:var(--teal)} .stat.done b{color:var(--slate)}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line-strong);overflow-x:auto}
+  .tab{border:0;background:none;padding:10px 14px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;white-space:nowrap}
+  .tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink)}
+  .tab .n{display:inline-block;min-width:22px;padding:0 6px;margin-left:6px;border-radius:999px;background:var(--slate-bg);color:var(--slate);font-size:12px;text-align:center}
+  .tab .n.hot{background:var(--amber);color:#fff}
+
+  .filters{display:flex;gap:10px;padding:14px 0;flex-wrap:wrap}
+  .filters .in{width:auto;min-width:170px;background:#fff}
+  .filters .grow{flex:1;min-width:220px}
+
+  /* ---------- ticket rows ---------- */
+  .ticket{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:10px}
+  .ticket.open{border-color:var(--line-strong)}
+  .t-head{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(190px,1fr) minmax(200px,.9fr);gap:18px;align-items:center;padding:14px 16px;cursor:pointer;width:100%;text-align:left;border:0;background:none}
+  .order{font-weight:600;font-size:16px}
+  .sub{color:var(--muted);font-size:13px;display:flex;gap:12px;flex-wrap:wrap}
+  .snip{color:var(--ink);font-size:13.5px;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+  .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12.5px;font-weight:600}
+  .pill.Sent{background:var(--amber-bg);color:var(--amber)}
+  .pill.Received{background:var(--teal-bg);color:var(--teal)}
+  .pill.Resolved{background:var(--slate-bg);color:var(--slate)}
+  .stat-line{font-size:13px;color:var(--muted);margin-top:4px}
+  .stat-line.late{color:var(--danger);font-weight:600}
+  .stat-line.ok{color:var(--teal);font-weight:600}
+
+  /* custody trail */
+  .trail{display:flex;align-items:flex-start;min-width:0}
+  .stop{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
+  .stop em{font-style:normal;font-size:12px;color:var(--muted);max-width:92px;text-align:center;line-height:1.2}
+  .node{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;border:2px solid var(--line-strong);background:#fff;color:var(--muted);position:relative;flex:none}
+  .node.origin{background:var(--ink);border-color:var(--ink);color:#fff}
+  .node.done{background:var(--teal-bg);border-color:var(--teal);color:var(--teal)}
+  .node.done::after{content:"✓";position:absolute;right:-6px;bottom:-6px;width:16px;height:16px;border-radius:50%;background:var(--teal);color:#fff;font-size:10px;line-height:16px;text-align:center}
+  .node.pending{border-style:dashed;border-color:var(--amber);color:var(--amber)}
+  .node.end{background:var(--slate);border-color:var(--slate);color:#fff;font-size:14px}
+  .node.more{border-style:solid;font-weight:600;color:var(--muted);background:var(--bg)}
+  .link{flex:1;min-width:14px;max-width:44px;height:2px;margin-top:15px;background:var(--teal)}
+  .link.pending{background:repeating-linear-gradient(90deg,var(--amber) 0 4px,transparent 4px 8px)}
+
+  /* details */
+  .detail{border-top:1px solid var(--line);padding:16px;display:grid;grid-template-columns:1.1fr 1fr;gap:26px}
+  .detail h3{font-family:var(--display);font-size:15px;margin:0 0 10px}
+  dl.kv{margin:0;display:grid;grid-template-columns:120px 1fr;gap:6px 12px;font-size:14px}
+  dl.kv dt{color:var(--muted)} dl.kv dd{margin:0;overflow-wrap:anywhere}
+  .full-trail{margin:2px 0 18px;overflow-x:auto;padding:4px 8px 4px 0}
+  ol.log{list-style:none;margin:0;padding:0;border-left:2px solid var(--line)}
+  ol.log li{position:relative;padding:0 0 14px 16px;font-size:14px}
+  ol.log li::before{content:"";position:absolute;left:-6px;top:6px;width:10px;height:10px;border-radius:50%;background:var(--line-strong);border:2px solid var(--surface)}
+  ol.log li.receive::before{background:var(--teal)} ol.log li.resolve::before{background:var(--slate)}
+  ol.log .proxy{font-style:normal;color:var(--muted);font-size:13px}
+  ol.log .when{display:block;color:var(--muted);font-size:12.5px}
+  ol.log .note{display:block;color:var(--ink);background:var(--bg);border-radius:6px;padding:4px 8px;margin-top:4px;font-size:13.5px}
+  .actions{grid-column:1/-1;display:flex;gap:10px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--line);padding-top:14px}
+  .actions .hint{color:var(--muted);font-size:13.5px}
+
+  .empty{background:var(--surface);border:1px dashed var(--line-strong);border-radius:var(--radius);padding:38px 20px;text-align:center;color:var(--muted)}
+  .empty b{display:block;color:var(--ink);font-family:var(--display);font-size:17px;margin-bottom:4px}
+
+  /* dialog + toast */
+  dialog{border:0;border-radius:14px;padding:0;width:min(520px,calc(100vw - 28px));box-shadow:0 20px 60px rgba(17,24,39,.3)}
+  dialog::backdrop{background:rgba(17,24,39,.5)}
+  .dlg-body{padding:24px}
+  .dlg-body h2{font-family:var(--display);font-size:22px;margin:0 0 4px}
+  .dlg-body .intro{color:var(--muted);margin:0 0 18px;font-size:14px}
+  .dlg-foot{display:flex;justify-content:flex-end;gap:10px;margin-top:8px}
+  .warn{background:var(--amber-bg);color:#7A3B06;border-radius:8px;padding:8px 12px;font-size:13.5px;margin:-4px 0 14px}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:14px;z-index:50;max-width:calc(100vw - 32px)}
+
+  @media (max-width:860px){
+    .t-head{grid-template-columns:1fr;gap:12px}
+    .detail{grid-template-columns:1fr}
+    .row2{grid-template-columns:1fr}
+    .who{text-align:left}
+  }
+  @media (prefers-reduced-motion:no-preference){
+    .ticket{transition:border-color .15s}
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ Sign in ============ -->
+<section id="login">
+  <form class="login-card" id="loginForm" autocomplete="on">
+    <h1>Ticket Handover</h1>
+    <p>Sign in with your work email and the team password.</p>
+    <div class="field"><label class="f" for="lgEmail">Email</label>
+      <input class="in" id="lgEmail" type="email" autocomplete="username" required></div>
+    <div class="field"><label class="f" for="lgPw">Team password</label>
+      <input class="in" id="lgPw" type="password" autocomplete="current-password" required></div>
+    <label style="display:flex;gap:8px;align-items:center;font-size:14px;margin:0 0 14px;cursor:pointer">
+      <input type="checkbox" id="lgRemember" checked> Keep me signed in on this device</label>
+    <button class="btn primary block" id="lgBtn" type="submit">Sign in</button>
+    <p class="err" id="lgErr" role="alert"></p>
+  </form>
+</section>
+
+<!-- ============ App ============ -->
+<div id="app" class="hidden">
+  <div class="wrap">
+    <header class="top">
+      <div class="brand">Ticket Handover</div>
+      <div class="who"><b id="meName"></b><br><span id="syncTxt">Loading…</span></div>
+      <button class="btn quiet" id="refreshBtn" type="button">Refresh</button>
+      <button class="btn" id="exportBtn" type="button">Export sheet</button>
+      <button class="btn quiet" id="logoutBtn" type="button">Sign out</button>
+      <button class="btn primary" id="newBtn" type="button">New ticket</button>
+    </header>
+
+    <div class="notify hidden" id="notifyBar">
+      <label><input type="checkbox" id="notifyToggle"> <b>Send email notifications</b>
+      <span>Off by default while you are setting things up. Turn on when ready.</span>
+      <span id="usageTxt" style="margin-left:auto"></span></label>
+    </div>
+
+    <div class="stats" id="stats" aria-label="Ticket totals"></div>
+
+    <nav class="tabs" id="tabs" role="tablist" aria-label="Ticket views"></nav>
+
+    <div class="filters">
+      <input class="in grow" id="q" type="search" placeholder="Search order number, company, pharmacy or issue" dir="auto">
+      <select class="in" id="fCompany" aria-label="Filter by company"></select>
+      <select class="in" id="fPharmacy" aria-label="Filter by pharmacy"></select>
+      <select class="in" id="fHolder" aria-label="Filter by who holds the ticket"></select>
+    </div>
+
+    <main id="list" aria-live="polite"></main>
+  </div>
+</div>
+
+<dialog id="dlg"></dialog>
+<div id="toast" class="hidden" role="status"></div>
+
+<script>
+/* ===================== CONFIG ===================== */
+const CONFIG = {
+  APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzCAUSslFSoeE2RqO2zfBqpZbiNSBTWEk_iHUxrQckegSbYfnT7CkIREShR-LY9cVSW/exec',
+  REMIND_HOURS: 4,        // Sent tickets older than this are highlighted
+  REFRESH_MS: 120000,
+  PHARMACIES: ["El Hadaba","Marwa","Moslmany","Mohamed Salam","Farghal","ENGY","Mo Wagih","Omranya"],
+  COMPANIES: ["Anabib El Petrol","Ahly Medical","Petrojet","AXA Services Egypt","GASCO","EGAS","Omega Care",
+    "MISR HEALTH CARE","Mednet","City Stars","Sainco","MetLife","Egyptian Customs Authority","El Ganzory Hospital",
+    "El Mashreq","GlobeMed","Next Care","HyperOne","Limitless Care","Estsharion","Seha One","EMC","Medsure","Other"]
+};
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const CRED_KEY = 'ticket-handover-cred';
+const SNAP_KEY = 'ticket-handover-snapshot-';
+
+/* ===================== STATE ===================== */
+const S = { usage:null, loading:false, lastOk:'', preview:false, busy:0, notify:false, cred:null, me:null, users:[], tickets:[], events:[], tab:'inbox', q:'', company:'', pharmacy:'', holder:'', open:null, timer:null };
+const $ = function(s){ return document.querySelector(s); };
+
+/* ===================== HELPERS ===================== */
+function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function nameOf(email){ const u = S.users.filter(function(x){ return x.email === email; })[0]; return u ? u.name : (email || ''); }
+function initials(name){ const p = String(name).trim().split(/\s+/); return ((p[0]||'')[0] || '?').toUpperCase() + ((p[1]||'')[0] || '').toUpperCase(); }
+function fmtWhen(iso){ if(!iso) return ''; return new Date(iso).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); }
+function hoursSince(iso){ return (Date.now() - new Date(iso).getTime()) / 36e5; }
+function ago(iso){
+  const h = hoursSince(iso);
+  if(h < 1) return Math.max(1, Math.round(h*60)) + 'm';
+  if(h < 24) return Math.floor(h) + 'h';
+  const d = Math.floor(h/24), r = Math.floor(h % 24);
+  return d + 'd' + (r ? ' ' + r + 'h' : '');
+}
+function normOrder(s){ return String(s||'').toLowerCase().replace(/^order\s*/,'').replace(/\s+/g,''); }
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.classList.remove('hidden');
+  clearTimeout(toast._t); toast._t = setTimeout(function(){ t.classList.add('hidden'); }, 3200);
+}
+function store(k, v){ try{ if(v == null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function load(k){ try{ return JSON.parse(localStorage.getItem(k)); }catch(e){ return null; } }
+
+/* ===================== API ===================== */
+async function apiOnce(action, payload){
+  if(CONFIG.APPS_SCRIPT_URL.indexOf('PASTE') === 0) throw new Error('Set APPS_SCRIPT_URL at the top of this file first.');
+  const body = Object.assign({ action:action, email:S.cred.email, password:S.cred.pw }, payload || {});
+  const ctl = new AbortController();
+  const timer = setTimeout(function(){ ctl.abort(); }, 30000);
+  let res, raw;
+  const t0 = Date.now();
+  try{
+    res = await fetch(CONFIG.APPS_SCRIPT_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(body), signal:ctl.signal });
+    raw = await res.text();
+  }catch(x){
+    if(x && x.name === 'AbortError'){ const e = new Error('The server did not answer within 30 seconds.'); e.code = 'HTML'; e.timeout = true; throw e; }
+    throw x;
+  } finally { clearTimeout(timer); }
+  let j;
+  try{ j = JSON.parse(raw); }
+  catch(x){
+    const m = raw.match(/<title>([^<]*)<\/title>/i);
+    const e = new Error('The server returned a web page instead of data' + (m ? ' ("' + m[1].trim().slice(0, 80) + '")' : '') + ' (HTTP ' + res.status + '). Press Refresh; if it repeats, check the deployment.');
+    e.code = 'HTML'; throw e;
+  }
+  S.lastMs = { server:j.ms, total:Date.now() - t0, perf:j.perf };
+  if(!j.ok){ const e = new Error(j.error || 'Request failed'); e.code = j.code; throw e; }
+  return j.data;
+}
+
+const READS = ['list', 'login', 'syncRetail'];
+async function api(action, payload){
+  const write = READS.indexOf(action) === -1;
+  if(write) S.busy++;
+  try{
+    try{ return await apiOnce(action, payload); }
+    catch(e){
+      // A read can safely be retried once if Google briefly answers with a web page.
+      if(!write && !e.timeout && (e.code === 'HTML' || e instanceof TypeError)){ await new Promise(function(r){ setTimeout(r, 1500); }); return await apiOnce(action, payload); }
+      throw e;
+    }
+  } finally { if(write) S.busy--; }
+}
+
+/* ===================== AUTH ===================== */
+async function signIn(email, pw, silent, remember){
+  S.cred = { email: email.trim(), pw: pw };
+  try{
+    const d = await api('login');
+    S.me = d.user; if(remember !== false) store(CRED_KEY, S.cred);
+    $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
+    $('#meName').textContent = S.me.name;
+    if(Array.isArray(d.tickets)) ingest(d); else await loadAll();
+    clearInterval(S.timer); S.timer = setInterval(function(){ if(!document.hidden) loadAll(true); }, CONFIG.REFRESH_MS);
+  }catch(e){
+    if(silent && S.preview && e.code !== 'AUTH'){
+      // The saved copy is already on screen: keep it and keep trying in the background.
+      $('#syncTxt').textContent = 'Showing saved copy. Could not update: ' + e.message;
+      clearInterval(S.timer); S.timer = setInterval(function(){ if(!document.hidden) loadAll(true); }, CONFIG.REFRESH_MS);
+      return;
+    }
+    S.cred = null; S.me = null; S.preview = false;
+    if(e.code === 'AUTH'){ store(CRED_KEY, null); $('#app').classList.add('hidden'); $('#login').classList.remove('hidden'); }      // only forget the saved login if it is really wrong
+    if(!silent) throw e;
+    $('#lgErr').textContent = e.code === 'AUTH' ? '' : 'Could not sign you in automatically: ' + e.message;
+  }
+}
+function signOut(){
+  store(CRED_KEY, null); S.cred = null; S.me = null; clearInterval(S.timer);
+  $('#app').classList.add('hidden'); $('#login').classList.remove('hidden');
+  $('#lgPw').value = '';
+}
+
+/* ===================== DATA ===================== */
+function timingText(){
+  const m = S.lastMs; if(!m || !m.total) return '';
+  const sec = function(ms){ return (ms/1000).toFixed(1) + 's'; };
+  let t = ' (total ' + sec(m.total);
+  if(m.server != null) t += ', script ' + sec(m.server);
+  if(m.perf) t += ', data load ' + sec(m.perf.load) + ', data save ' + sec(m.perf.save);
+  return t + ')';
+}
+
+let retailSyncing = false, lastRetailSync = 0;
+async function maybeSyncRetail(){
+  if(retailSyncing || !S.me || !S.cred) return;
+  if(!S.tickets.some(function(t){ return t.retailIssueId && t.retailStatus === 'Open'; })) return;
+  if(Date.now() - lastRetailSync < 90000) return;
+  retailSyncing = true; lastRetailSync = Date.now();
+  try{
+    const d = await api('syncRetail');
+    (d.patches || []).forEach(function(p){
+      const i = S.tickets.findIndex(function(t){ return t.id === p.ticket.id; });
+      if(i !== -1) S.tickets[i] = p.ticket;
+      S.events = S.events.filter(function(e){ return e.ticketId !== p.ticket.id; }).concat(p.events || []);
+      if(p.ticket.holder === S.me.email && p.ticket.retailStatus === 'Answered') toast('Mohamed Sayed resolved ' + p.ticket.orderNumber + ' in the Retail Tracker. Please check it and submit.');
+    });
+    if((d.patches || []).length){ enrich(); render(); }
+  }catch(e){ /* background check: stay quiet, it will try again */ }
+  retailSyncing = false;
+}
+
+function ingest(d){
+  if(!d || !Array.isArray(d.users) || !Array.isArray(d.tickets) || !Array.isArray(d.events)){
+    throw new Error('Unexpected reply from the server: ' + JSON.stringify(d).slice(0, 220));
+  }
+  S.users = d.users; S.tickets = d.tickets; S.events = d.events;
+  S.notify = !!(d.settings && d.settings.notificationsEnabled);
+  if(typeof d.usage === 'number') S.usage = d.usage;
+  updateNotifyBar();
+  enrich(); fillFilters(); render();
+  S.lastOk = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  $('#syncTxt').textContent = 'Updated ' + S.lastOk + timingText();
+  setTimeout(maybeSyncRetail, 800);
+  if(S.me) store(SNAP_KEY + S.me.email.toLowerCase(), { me:S.me, data:{ users:S.users, tickets:S.tickets, events:S.events, settings:{ notificationsEnabled:S.notify } } });
+}
+
+async function loadAll(quiet){
+  if(S.loading) return;                       // never stack requests on top of each other
+  if(quiet && S.busy > 0) return;             // do not disturb a save in progress
+  S.loading = true;
+  try{
+    if(!quiet) $('#syncTxt').textContent = 'Loading…';
+    ingest(await api('list'));
+  }catch(e){
+    if(e.code === 'AUTH'){ signOut(); return; }
+    if(quiet){
+      // Background refresh: stay calm, keep the data on screen, try again later.
+      $('#syncTxt').textContent = S.lastOk ? 'Last updated ' + S.lastOk + ', will retry automatically' : 'Waiting for the server…';
+    } else {
+      $('#syncTxt').textContent = 'Could not refresh: ' + e.message;
+    }
+  }finally{ S.loading = false; }
+}
+
+function applyPatch(d){
+  if(!d || !d.ticket){ return loadAll(true); }
+  const i = S.tickets.findIndex(function(t){ return t.id === d.ticket.id; });
+  if(i === -1) S.tickets.push(d.ticket); else S.tickets[i] = d.ticket;
+  S.events = S.events.filter(function(e){ return e.ticketId !== d.ticket.id; }).concat(d.events || []);
+  enrich(); fillFilters(); render();
+  if(typeof d.usage === 'number'){ S.usage = d.usage; updateNotifyBar(); }
+  S.lastOk = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  $('#syncTxt').textContent = 'Saved ' + S.lastOk + timingText();
+}
+
+function applyRole(){
+  const v = !!(S.me && S.me.viewer);
+  $('#newBtn').classList.toggle('hidden', v);
+  if(S.me) $('#meName').textContent = S.me.name + (v ? ' (view only)' : '');
+}
+
+function updateNotifyBar(){
+  const bar = $('#notifyBar');
+  bar.classList.toggle('hidden', !(S.me && S.me.admin));
+  applyRole();
+  $('#notifyToggle').checked = S.notify;
+  $('#usageTxt').textContent = (typeof S.usage === 'number') ? 'Storage used: ' + S.usage + '%' + (S.usage >= 80 ? ' (run archiveOldResolved soon)' : '') : '';
+}
+
+function enrich(){
+  const byT = {};
+  S.events.forEach(function(e){ (byT[e.ticketId] = byT[e.ticketId] || []).push(e); });
+  S.tickets.forEach(function(t){
+    const evs = (byT[t.id] || []).slice().sort(function(a,b){ return a.at < b.at ? -1 : 1; });
+    const hops = [];
+    evs.forEach(function(e){
+      if(e.kind === 'create' || e.kind === 'resend' || e.kind === 'reopen') hops.push({ from:e.from, to:e.to, at:e.at, note:e.note, kind:e.kind, receivedAt:null });
+      else if(e.kind === 'receive' && hops.length) hops[hops.length-1].receivedAt = e.at;
+    });
+    t._events = evs; t._hops = hops;
+  });
+}
+
+/* ===================== VIEWS ===================== */
+function lastHop(t){ return t._hops[t._hops.length-1]; }
+const TABS = [
+  { id:'inbox',   label:'Inbox',            hot:true,  empty:['Nothing waiting for you','Tickets sent to you will show up here until you confirm receipt.'],
+    fn:function(t){ return t.status === 'Sent' && t.holder === S.me.email; } },
+  { id:'mine',    label:'With me',          count:true, empty:['You are not holding any ticket','Confirmed tickets that are still open with you appear here.'],
+    fn:function(t){ return t.status === 'Received' && t.holder === S.me.email; } },
+  { id:'waiting', label:'Waiting on others',count:true, empty:['Nothing is waiting on someone else','Tickets you sent that are not confirmed yet appear here.'],
+    fn:function(t){ const h = lastHop(t); return t.status === 'Sent' && t.holder !== S.me.email && h && h.from === S.me.email; } },
+  { id:'open',    label:'All open',         count:true, empty:['No open tickets','Every ticket is resolved.'],
+    fn:function(t){ return t.status !== 'Resolved'; } },
+  { id:'done',    label:'Resolved',         count:true, empty:['No resolved tickets yet','Submitted tickets are kept here.'],
+    fn:function(t){ return t.status === 'Resolved'; } }
+];
+
+function fillFilters(){
+  const cs = {}, ps = {};
+  S.tickets.forEach(function(t){ if(t.company) cs[t.company] = 1; if(t.pharmacy) ps[t.pharmacy] = 1; });
+  const opts = function(all, label, cur){
+    return '<option value="">' + label + '</option>' + Object.keys(all).sort().map(function(k){
+      return '<option' + (k === cur ? ' selected' : '') + ' value="' + esc(k) + '">' + esc(k) + '</option>'; }).join('');
+  };
+  $('#fCompany').innerHTML = opts(cs, 'All companies', S.company);
+  $('#fPharmacy').innerHTML = opts(ps, 'All pharmacies', S.pharmacy);
+  $('#fHolder').innerHTML = '<option value="">Anyone holding</option>' + S.users.filter(function(u){ return !u.viewer; }).map(function(u){
+    return '<option value="' + esc(u.email) + '"' + (u.email === S.holder ? ' selected' : '') + '>' + esc(u.name) + '</option>'; }).join('');
+}
+
+function passesFilters(t){
+  if(S.company && t.company !== S.company) return false;
+  if(S.pharmacy && t.pharmacy !== S.pharmacy) return false;
+  if(S.holder && t.holder !== S.holder) return false;
+  if(S.q){
+    const hay = [t.orderNumber, t.company, t.pharmacy, t.issue, t.newOrderNumber, t.id].join(' ').toLowerCase();
+    if(hay.indexOf(S.q.toLowerCase()) === -1) return false;
+  }
+  return true;
+}
+
+function renderStats(){
+  const n = function(fn){ return S.tickets.filter(fn).length; };
+  const items = [
+    ['open', n(function(t){ return t.status !== 'Resolved'; }), 'Open'],
+    ['sent', n(function(t){ return t.status === 'Sent'; }), 'Waiting to be confirmed'],
+    ['recv', n(function(t){ return t.status === 'Received'; }), 'Being worked on'],
+    ['done', n(function(t){ return t.status === 'Resolved'; }), 'Resolved']
+  ];
+  $('#stats').innerHTML = items.map(function(i){ return '<div class="stat ' + i[0] + '"><b>' + i[1] + '</b><span>' + i[2] + '</span></div>'; }).join('');
+}
+
+function render(){
+  const me = S.me.email;
+  renderStats();
+  const TABS_SHOWN = S.me.viewer ? TABS.filter(function(x){ return x.id === 'open' || x.id === 'done'; }) : TABS;
+  if(!TABS_SHOWN.some(function(x){ return x.id === S.tab; })) S.tab = TABS_SHOWN[0].id;
+  $('#tabs').innerHTML = TABS_SHOWN.map(function(tb){
+    const n = S.tickets.filter(tb.fn).length;
+    const badge = (tb.hot || tb.count) ? '<span class="n' + (tb.hot && n ? ' hot' : '') + '">' + n + '</span>' : '';
+    return '<button class="tab" role="tab" data-tab="' + tb.id + '" aria-selected="' + (S.tab === tb.id) + '">' + tb.label + badge + '</button>';
+  }).join('');
+
+  const tb = TABS.filter(function(x){ return x.id === S.tab; })[0];
+  let rows = S.tickets.filter(tb.fn).filter(passesFilters);
+  rows.sort(function(a,b){ return tb.id === 'inbox' ? (a.updatedAt < b.updatedAt ? -1 : 1) : (a.updatedAt < b.updatedAt ? 1 : -1); });
+
+  if(!rows.length){
+    const filtered = S.q || S.company || S.pharmacy || S.holder;
+    $('#list').innerHTML = '<div class="empty"><b>' + esc(filtered ? 'No tickets match these filters' : tb.empty[0]) + '</b>' +
+      esc(filtered ? 'Clear the search or filters to see more.' : tb.empty[1]) + '</div>';
+    return;
+  }
+  $('#list').innerHTML = rows.map(ticketHTML).join('');
+}
+
+function stopsOf(t){
+  const hops = t._hops, nodes = [];
+  if(!hops.length) return nodes;
+  nodes.push({ email:hops[0].from, cls:'origin', label:'Opened' });
+  hops.forEach(function(h){ nodes.push({ email:h.to, cls:h.receivedAt ? 'done' : 'pending', label:h.receivedAt ? 'Confirmed ' + fmtWhen(h.receivedAt) : 'Waiting to confirm' }); });
+  if(t.status === 'Resolved') nodes.push({ end:true, label:'Resolved ' + fmtWhen(t.resolvedAt) });
+  return nodes;
+}
+
+function trailHTML(t, full){
+  let nodes = stopsOf(t);
+  if(!full && nodes.length > 4){
+    const hidden = nodes.length - 3;
+    nodes = [nodes[0], { more:hidden }].concat(nodes.slice(-2));
+  }
+  let out = '', prev = null;
+  nodes.forEach(function(n, i){
+    if(i > 0){
+      const pending = n.cls === 'pending';
+      out += '<span class="link' + (pending ? ' pending' : '') + '"></span>';
+    }
+    let inner, cls, title, label = '';
+    if(n.more){ cls = 'more'; inner = '+' + n.more; title = n.more + ' earlier step(s)'; }
+    else if(n.end){ cls = 'end'; inner = '✓'; title = n.label; label = 'Closed'; }
+    else { cls = n.cls; inner = esc(initials(nameOf(n.email))); title = nameOf(n.email) + ' - ' + n.label; label = nameOf(n.email).split(' ').slice(0,2).join(' '); }
+    out += '<span class="stop"><span class="node ' + cls + '" title="' + esc(title) + '">' + inner + '</span>' + (full && label ? '<em>' + esc(label) + '</em>' : '') + '</span>';
+    prev = n;
+  });
+  return '<div class="trail' + (full ? ' full-trail' : '') + '">' + out + '</div>';
+}
+
+function lastComment(t){
+  const c = (t._events || []).filter(function(e){ return e.kind === 'comment'; });
+  return c.length ? c[c.length-1].note : '';
+}
+
+function retailLine(t){
+  if(!t.retailIssueId) return '';
+  if(t.retailStatus === 'Answered') return 'Retail Issue Tracker: Mohamed Sayed resolved it. Verify, then Submit';
+  if(t.retailStatus === 'Resolved') return 'Retail Issue Tracker: resolved there too';
+  if(t.status === 'Resolved') return 'Retail Issue Tracker: still open there';
+  return 'Retail Issue Tracker: open, assigned to Mohamed Sayed';
+}
+
+function statusHTML(t){
+  let line, late = false;
+  if(t.status === 'Sent'){
+    late = hoursSince(t.updatedAt) > CONFIG.REMIND_HOURS;
+    line = 'Waiting for ' + nameOf(t.holder) + ' to confirm (' + ago(t.updatedAt) + ')';
+  } else if(t.status === 'Received'){
+    line = 'With ' + nameOf(t.holder) + ' for ' + ago(t.updatedAt);
+  } else {
+    line = 'Closed by ' + nameOf(t.resolvedBy) + ', ' + fmtWhen(t.resolvedAt);
+  }
+  const rl = retailLine(t);
+  return '<span class="pill ' + t.status + '">' + t.status + '</span><div class="stat-line' + (late ? ' late' : '') + '">' + esc(line) + '</div>' +
+    (rl ? '<div class="stat-line' + (t.retailStatus === 'Answered' ? ' ok' : '') + '">' + esc(rl) + '</div>' : '');
+}
+
+function ticketHTML(t){
+  const open = S.open === t.id;
+  return '<article class="ticket' + (open ? ' open' : '') + '" data-id="' + esc(t.id) + '">' +
+    '<button class="t-head" type="button" data-toggle="' + esc(t.id) + '" aria-expanded="' + open + '">' +
+      '<div><div class="order">' + esc(t.orderNumber) + '</div>' +
+        '<div class="sub"><span>' + esc(t.company || 'No company') + '</span><span>' + esc(t.pharmacy || 'No pharmacy') + '</span></div>' +
+        (t.issue ? '<div class="snip" dir="auto">' + esc(t.issue) + '</div>' : '') + '</div>' +
+      '<div>' + trailHTML(t, false) + '</div>' +
+      '<div>' + statusHTML(t) + '</div>' +
+    '</button>' + (open ? detailHTML(t) : '') + '</article>';
+}
+
+function eventText(e){
+  const a = esc(nameOf(e.from)), b = esc(nameOf(e.to));
+  const proxy = (e.by && e.by !== e.from && e.kind !== 'create' && e.kind !== 'reopen') ? ' <em class="proxy">(by ' + esc(nameOf(e.by)) + ' on their behalf)</em>' : '';
+  return eventCore(e, a, b) + proxy;
+}
+function eventCore(e, a, b){
+  switch(e.kind){
+    case 'create':  return a + ' opened the ticket and sent it to ' + b;
+    case 'resend':  return a + ' resent it to ' + b;
+    case 'reopen':  return a + ' reopened it and sent it to ' + b;
+    case 'receive': return a + ' confirmed receipt';
+    case 'retail':  return a + ' sent it to the Retail Issue Tracker (assigned to Mohamed Sayed)';
+    case 'comment': return a + ' added a comment';
+    case 'retail_done': return 'Mohamed Sayed resolved it in the Retail Issue Tracker';
+    case 'resolve': return a + ' submitted it as resolved';
+    default: return esc(e.kind);
+  }
+}
+
+function actionsHTML(t){
+  if(S.me.viewer) return '<span class="hint">You have view-only access.</span>';
+  const holderIsMe = t.holder === S.me.email;
+  const mine = holderIsMe || S.me.admin;
+  const proxyHint = (!holderIsMe && S.me.admin && t.status !== 'Resolved') ? '<span class="hint">Admin: you are acting on behalf of ' + esc(nameOf(t.holder)) + '.</span>' : '';
+  const id = esc(t.id);
+  if(t.status === 'Resolved') return '<button class="btn" data-act="reopen" data-id="' + id + '">Reopen</button><span class="hint">Use this if the order changed again after it was closed.</span>';
+  if(!mine){
+    const h = lastHop(t);
+    return '<span class="hint">' + (t.status === 'Sent' ? 'Waiting for ' + esc(nameOf(t.holder)) + ' to confirm receipt.' : esc(nameOf(t.holder)) + ' is working on it.') + '</span>';
+  }
+  if(t.status === 'Sent') return '<button class="btn good" data-act="receive" data-id="' + id + '">Confirm receipt</button><button class="btn" data-act="resend" data-id="' + id + '">Resend</button>' + proxyHint;
+  const retailBtn = t.retailIssueId ? '' : '<button class="btn" data-act="retail" data-id="' + id + '">Send to Retail Tracker</button>';
+  return '<button class="btn good" data-act="resolve" data-id="' + id + '">Submit</button><button class="btn" data-act="comment" data-id="' + id + '">Add comment</button>' + retailBtn + '<button class="btn" data-act="resend" data-id="' + id + '">Resend</button>' + proxyHint;
+}
+
+function detailHTML(t){
+  const log = t._events.map(function(e){
+    return '<li class="' + esc(e.kind) + '">' + eventText(e) + '<span class="when">' + fmtWhen(e.at) + '</span>' +
+      (e.note ? '<span class="note" dir="auto">' + esc(e.note) + '</span>' : '') + '</li>';
+  }).join('');
+  return '<div class="detail"><div>' +
+      '<h3>Custody trail</h3>' + trailHTML(t, true) +
+      '<h3>Ticket</h3><dl class="kv">' +
+        '<dt>Order</dt><dd>' + esc(t.orderNumber) + '</dd>' +
+        '<dt>Company</dt><dd>' + esc(t.company || '-') + '</dd>' +
+        '<dt>Pharmacy</dt><dd>' + esc(t.pharmacy || '-') + '</dd>' +
+        '<dt>Cycle</dt><dd>' + esc(t.cycle || '-') + '</dd>' +
+        '<dt>Opened by</dt><dd>' + esc(nameOf(t.createdBy)) + ', ' + fmtWhen(t.createdAt) + '</dd>' +
+        '<dt>Issue</dt><dd dir="auto">' + esc(t.issue || '-') + '</dd>' +
+        (lastComment(t) ? '<dt>Latest comment</dt><dd dir="auto">' + esc(lastComment(t)) + '</dd>' : '') +
+        (t.retailIssueId ? '<dt>Retail tracker</dt><dd>' + esc(retailLine(t).replace('Retail Issue Tracker: ','')) + '</dd>' : '') +
+        ((t.retailStatus === 'Answered' || t.retailStatus === 'Resolved') && (t.retailNewOrder || t.retailNote) ? '<dt>Sayed answer</dt><dd dir="auto">' + esc((t.retailNewOrder ? 'New order: ' + t.retailNewOrder + '. ' : '') + (t.retailNote || '')) + '</dd>' : '') +
+        (t.status === 'Resolved' ? '<dt>New order</dt><dd>' + esc(t.newOrderNumber || '-') + '</dd><dt>Resolution</dt><dd dir="auto">' + esc(t.resolutionNote || '-') + '</dd>' : '') +
+      '</dl></div>' +
+      '<div><h3>History</h3><ol class="log">' + log + '</ol></div>' +
+      '<div class="actions">' + actionsHTML(t) + '</div></div>';
+}
+
+/* ===================== DIALOGS ===================== */
+function fieldHTML(f){
+  const req = f.required ? ' required' : '';
+  let ctl;
+  if(f.type === 'select'){
+    ctl = '<select class="in" name="' + f.name + '"' + req + '><option value="">' + esc(f.placeholder || 'Choose…') + '</option>' +
+      f.options.map(function(o){ const v = typeof o === 'string' ? o : o.value, l = typeof o === 'string' ? o : o.label;
+        return '<option value="' + esc(v) + '"' + (f.value === v ? ' selected' : '') + '>' + esc(l) + '</option>'; }).join('') + '</select>';
+  } else if(f.type === 'textarea'){
+    ctl = '<textarea class="in" name="' + f.name + '" dir="auto" placeholder="' + esc(f.placeholder || '') + '"' + req + '>' + esc(f.value || '') + '</textarea>';
+  } else {
+    ctl = '<input class="in" name="' + f.name + '" dir="auto" autocomplete="off" value="' + esc(f.value || '') + '" placeholder="' + esc(f.placeholder || '') + '"' + req + '>';
+  }
+  return '<div class="field"><label class="f">' + esc(f.label) + '</label>' + ctl + '</div>';
+}
+
+function ask(cfg){
+  const dlg = $('#dlg');
+  dlg.innerHTML = '<form class="dlg-body" novalidate>' +
+    '<h2>' + esc(cfg.title) + '</h2><p class="intro">' + esc(cfg.intro || '') + '</p>' +
+    (cfg.before || '') + cfg.fields.map(fieldHTML).join('') +
+    '<p class="err" role="alert"></p>' +
+    '<div class="dlg-foot"><button class="btn" type="button" data-close>Cancel</button>' +
+    '<button class="btn primary" type="submit">' + esc(cfg.confirm) + '</button></div></form>';
+  const form = dlg.querySelector('form'), err = dlg.querySelector('.err'), submit = form.querySelector('[type=submit]');
+  form.querySelector('[data-close]').onclick = function(){ dlg.close(); };
+  if(cfg.onOpen) cfg.onOpen(form);
+  form.onsubmit = async function(ev){
+    ev.preventDefault(); err.textContent = '';
+    const vals = {}; new FormData(form).forEach(function(v,k){ vals[k] = String(v).trim(); });
+    for(const f of cfg.fields){ if(f.required && !vals[f.name]){ err.textContent = f.label + ' is required.'; return; } }
+    submit.disabled = true; const old = submit.textContent; submit.textContent = 'Saving…';
+    try{ await cfg.run(vals); dlg.close(); }
+    catch(e){ if(e.code === 'AUTH'){ dlg.close(); signOut(); return; } if(e.code === 'HTML'){ dlg.close(); toast('No clear answer from the server. Checking what was saved...'); await loadAll(true); return; } err.textContent = e.message; submit.disabled = false; submit.textContent = old; }
+  };
+  dlg.showModal();
+  const first = form.querySelector('input,select,textarea'); if(first) first.focus();
+}
+
+function others(){ return S.users.filter(function(u){ return u.email !== S.me.email && !u.viewer; }).map(function(u){ return { value:u.email, label:u.name }; }); }
+
+function newTicketDialog(){
+  const now = new Date(), cur = MONTHS[now.getMonth()] + ' ' + now.getFullYear(), cycles = [];
+  for(let y = 2026; y <= 2027; y++) MONTHS.forEach(function(m){ cycles.push(m + ' ' + y); });
+  ask({
+    title:'New ticket', intro:'Enter the order and choose who you are handing it to.', confirm:'Send ticket',
+    before:'<div class="warn hidden" id="dupWarn"></div>',
+    fields:[
+      { name:'orderNumber', label:'Order number', required:true },
+      { name:'company', label:'Company', type:'select', options:CONFIG.COMPANIES },
+      { name:'pharmacy', label:'Pharmacy', type:'select', options:CONFIG.PHARMACIES },
+      { name:'cycle', label:'Cycle', type:'select', options:cycles, value:cur },
+      { name:'issue', label:'What is the problem?', type:'textarea', required:true },
+      { name:'to', label:'Hand to', type:'select', options:others(), required:true, placeholder:'Choose person' }
+    ],
+    onOpen:function(form){
+      form.orderNumber.addEventListener('input', function(){
+        const n = normOrder(form.orderNumber.value), box = $('#dupWarn');
+        const hit = n.length > 5 ? S.tickets.filter(function(t){ return normOrder(t.orderNumber) === n; })[0] : null;
+        if(hit){ box.textContent = 'This order already has a ticket (' + hit.status + ', ' + fmtWhen(hit.createdAt) + '). Consider resending or reopening it instead of opening a new one.'; box.classList.remove('hidden'); }
+        else box.classList.add('hidden');
+      });
+    },
+    run:async function(v){ const d = await api('create', v); toast('Ticket sent to ' + nameOf(v.to)); S.tab = 'waiting'; applyPatch(d); }
+  });
+}
+
+function actionDialog(kind, id){
+  const t = S.tickets.filter(function(x){ return x.id === id; })[0]; if(!t) return;
+  if(kind === 'resend') ask({
+    title:'Resend ' + t.orderNumber, intro:'The next person has to confirm receipt.', confirm:'Resend',
+    fields:[ { name:'to', label:'Hand to', type:'select', options:others(), required:true, placeholder:'Choose person' },
+             { name:'note', label:'Note (optional)', type:'textarea', placeholder:'What changed or what needs to be done?' } ],
+    run:async function(v){ const d = await api('resend', { id:id, to:v.to, note:v.note }); toast('Resent to ' + nameOf(v.to)); S.tab = 'waiting'; applyPatch(d); }
+  });
+  if(kind === 'comment') ask({
+    title:'Comment on ' + t.orderNumber, intro:'Write what the problem is and what you did. It is saved in the ticket history.', confirm:'Save comment',
+    fields:[ { name:'comment', label:'Comment', type:'textarea', required:true, placeholder:'For example: the item was not dispensed, sent to Mohamed Sayed on the Retail Issue Tracker' } ],
+    run:async function(v){ const d = await api('comment', { id:id, comment:v.comment }); toast('Comment saved'); applyPatch(d); }
+  });
+  if(kind === 'retail') ask({
+    title:'Send ' + t.orderNumber + ' to Retail Tracker', intro:'This opens an issue in the Retail Issue Tracker, assigned to Mohamed Sayed, with the same order, company and pharmacy. You can edit the comment he will see.', confirm:'Create in Retail Tracker',
+    fields:[ { name:'comment', label:'Comment for Mohamed Sayed', type:'textarea', required:true, value:(lastComment(t) || t.issue || '') } ],
+    run:async function(v){ const d = await api('sendToRetail', { id:id, comment:v.comment }); toast('Created in the Retail Issue Tracker'); applyPatch(d); }
+  });
+  if(kind === 'resolve'){
+    const answered = t.retailStatus === 'Answered', stillOpen = t.retailIssueId && t.retailStatus === 'Open';
+    ask({
+      title:'Submit ' + t.orderNumber, intro:'This marks the ticket as resolved and no longer with us.', confirm:'Submit',
+      before: answered ? '<div class="warn" style="background:var(--teal-bg);color:#0B4F49">Mohamed Sayed resolved this in the Retail Issue Tracker. Check that it is really solved, then submit. His answer is filled in below.</div>'
+            : (stillOpen ? '<div class="warn">Mohamed Sayed has not resolved this in the Retail Issue Tracker yet. If you submit now, that issue stays open there.</div>' : ''),
+      fields:[ { name:'newOrderNumber', label:'New order number (if any)', value:(t.retailNewOrder || '') },
+               { name:'note', label:'Resolution note', type:'textarea', value:(t.retailNote || ''), placeholder:'What was done?' } ],
+      run:async function(v){ const d = await api('resolve', { id:id, newOrderNumber:v.newOrderNumber, note:v.note }); toast('Ticket submitted'); S.open = null; applyPatch(d); }
+    });
+  }
+  if(kind === 'reopen') ask({
+    title:'Reopen ' + t.orderNumber, intro:'Choose who should pick it up again.', confirm:'Reopen',
+    fields:[ { name:'to', label:'Hand to', type:'select', options:others(), required:true, placeholder:'Choose person' },
+             { name:'note', label:'Why is it reopened?', type:'textarea' } ],
+    run:async function(v){ const d = await api('reopen', { id:id, to:v.to, note:v.note }); toast('Ticket reopened'); S.tab = 'waiting'; applyPatch(d); }
+  });
+}
+
+/* ===================== EXPORT ===================== */
+function csvCell(v){
+  v = String(v == null ? '' : v);
+  if(/^[=+\-@]/.test(v) && v.length > 1) v = "'" + v;      // stop Excel from treating text as a formula
+  return '"' + v.replace(/"/g, '""') + '"';
+}
+function stamp(iso){
+  if(!iso) return '';
+  const d = new Date(iso), p = function(n){ return String(n).padStart(2,'0'); };
+  return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+function plainEvent(e){
+  const a = nameOf(e.from), b = nameOf(e.to), by = (e.by && e.by !== e.from && e.kind !== 'create' && e.kind !== 'reopen') ? ' (by ' + nameOf(e.by) + ')' : '';
+  const t = { create:a + ' opened and sent to ' + b, resend:a + ' resent to ' + b, reopen:a + ' reopened and sent to ' + b,
+              receive:a + ' confirmed receipt', retail:a + ' sent to the Retail Issue Tracker', comment:a + ' commented', retail_done:'Mohamed Sayed resolved it in the Retail Issue Tracker', resolve:a + ' submitted as resolved' }[e.kind] || e.kind;
+  return t + by + (e.note ? ' - ' + e.note : '');
+}
+function exportCSV(){
+  const head = ['Ticket ID','Order number','Company','Pharmacy','Cycle','Issue','Status','Currently with','Opened by','Opened at','Last update',
+                'New order number','Resolution note','Retail Issue Tracker','Resolved by','Resolved at','Times handed over','Days open or to resolve','History'];
+  const rows = S.tickets.slice().sort(function(a,b){ return a.createdAt < b.createdAt ? -1 : 1; }).map(function(t){
+    const end = t.status === 'Resolved' && t.resolvedAt ? new Date(t.resolvedAt) : new Date();
+    const days = Math.max(0, Math.floor((end - new Date(t.createdAt)) / 86400000));
+    return [t.id, t.orderNumber, t.company, t.pharmacy, t.cycle, t.issue, t.status,
+            t.status === 'Resolved' ? '' : nameOf(t.holder), nameOf(t.createdBy), stamp(t.createdAt), stamp(t.updatedAt),
+            t.newOrderNumber, t.resolutionNote, t.retailIssueId ? (t.retailStatus === 'Resolved' ? 'Closed on both' : (t.retailStatus === 'Answered' ? 'Sayed resolved it' : 'Open there')) : '', t.resolvedBy ? nameOf(t.resolvedBy) : '', stamp(t.resolvedAt),
+            t._hops.length, days, t._events.map(function(e){ return stamp(e.at) + ' ' + plainEvent(e); }).join(' | ')];
+  });
+  const csv = '\uFEFF' + [head].concat(rows).map(function(r){ return r.map(csvCell).join(','); }).join('\r\n');
+  const url = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' }));
+  const a = document.createElement('a'); a.href = url; a.download = 'tickets-' + stamp(new Date().toISOString()).slice(0,10) + '.csv';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+  toast('Exported ' + rows.length + ' tickets');
+}
+
+/* ===================== EVENTS ===================== */
+$('#loginForm').addEventListener('submit', async function(ev){
+  ev.preventDefault();
+  const btn = $('#lgBtn'), err = $('#lgErr'); err.textContent = 'Connecting to the server. The first sign-in after a quiet period can take up to 10 seconds.'; btn.disabled = true; btn.textContent = 'Signing in…';
+  try{ await signIn($('#lgEmail').value, $('#lgPw').value, false, $('#lgRemember').checked); err.textContent = ''; }
+  catch(e){ err.textContent = e.message; }
+  btn.disabled = false; btn.textContent = 'Sign in';
+});
+$('#logoutBtn').onclick = signOut;
+$('#refreshBtn').onclick = function(){ loadAll(); };
+$('#newBtn').onclick = newTicketDialog;
+$('#exportBtn').onclick = exportCSV;
+$('#notifyToggle').addEventListener('change', async function(e){
+  const want = e.target.checked; e.target.disabled = true;
+  try{ await api('setNotifications', { enabled:want }); S.notify = want; toast(want ? 'Email notifications are on' : 'Email notifications are off'); }
+  catch(err){ e.target.checked = !want; if(err.code === 'AUTH'){ signOut(); return; } toast(err.message); }
+  e.target.disabled = false;
+});
+$('#tabs').addEventListener('click', function(e){ const b = e.target.closest('[data-tab]'); if(b){ S.tab = b.dataset.tab; render(); } });
+$('#q').addEventListener('input', function(e){ S.q = e.target.value.trim(); render(); });
+$('#fCompany').addEventListener('change', function(e){ S.company = e.target.value; render(); });
+$('#fPharmacy').addEventListener('change', function(e){ S.pharmacy = e.target.value; render(); });
+$('#fHolder').addEventListener('change', function(e){ S.holder = e.target.value; render(); });
+$('#list').addEventListener('click', async function(e){
+  const act = e.target.closest('[data-act]');
+  if(act){
+    const id = act.dataset.id, kind = act.dataset.act;
+    if(kind === 'receive'){
+      act.disabled = true; act.textContent = 'Saving…';
+      try{ const d = await api('receive', { id:id }); toast('Receipt confirmed'); S.tab = 'mine'; applyPatch(d); }
+      catch(err){ if(err.code === 'AUTH'){ signOut(); return; } if(err.code === 'HTML'){ toast('No clear answer from the server. Checking what was saved...'); await loadAll(true); return; } toast(err.message); act.disabled = false; act.textContent = 'Confirm receipt'; }
+    } else actionDialog(kind, id);
+    return;
+  }
+  const tg = e.target.closest('[data-toggle]');
+  if(tg){ S.open = (S.open === tg.dataset.toggle) ? null : tg.dataset.toggle; render(); }
+});
+document.addEventListener('visibilitychange', function(){ if(!document.hidden && S.me) loadAll(true); });
+
+/* auto sign-in if this browser already signed in */
+(function(){ const c = load(CRED_KEY); if(c && c.email && c.pw){
+    $('#lgEmail').value = c.email;
+    const snap = load(SNAP_KEY + c.email.trim().toLowerCase());
+    if(snap && snap.me && snap.data && Array.isArray(snap.data.tickets)){
+      // Show the last saved copy instantly while the server wakes up.
+      S.cred = { email:c.email, pw:c.pw }; S.me = snap.me; S.preview = true;
+      $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
+      $('#meName').textContent = S.me.name;
+      try{ ingest(snap.data); $('#syncTxt').textContent = 'Showing saved copy, updating…'; }catch(x){ S.preview = false; }
+    } else {
+      $('#lgErr').textContent = 'Signing you in automatically…';
+    } signIn(c.email, c.pw, true).then(function(){ if(!S.me && $('#lgErr').textContent.indexOf('automatically…') !== -1) $('#lgErr').textContent = ''; }); } })();
+</script>
+</body>
+</html>
