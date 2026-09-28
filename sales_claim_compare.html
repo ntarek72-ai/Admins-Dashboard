@@ -257,6 +257,45 @@ function parseFile(file, callback){
 const SALES_DATA_URL = 'data/sale.order.xlsx';
 const CLAIM_DATA_URL = 'data/helpdesk.ticket.xlsx';
 
+
+// "Last updated" = when the data files were last changed in the repo.
+// Primary source: GitHub commits API (real commit time of each file).
+// Fallback: the Last-Modified header of the file itself.
+const REPO_COMMITS_API = 'https://api.github.com/repos/ntarek72-ai/Admins-Dashboard/commits?per_page=1&path=';
+
+function fetchCommitDate(path){
+  return fetch(REPO_COMMITS_API + encodeURIComponent(path)).then(function(res){
+    if(!res.ok) throw new Error('api');
+    return res.json();
+  }).then(function(list){
+    if(!list.length) throw new Error('empty');
+    return new Date(list[0].commit.committer.date);
+  });
+}
+
+function fetchHeaderDate(url){
+  return fetch(url + '?v=' + Date.now(), { method: 'HEAD', cache: 'no-store' }).then(function(res){
+    const lm = res.headers.get('Last-Modified');
+    if(!lm) throw new Error('no header');
+    return new Date(lm);
+  });
+}
+
+function getFileDate(path){
+  return fetchCommitDate(path).catch(function(){ return fetchHeaderDate(path); });
+}
+
+function formatUpdated(d){
+  return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
+function showLastUpdated(banner){
+  Promise.all([getFileDate(SALES_DATA_URL), getFileDate(CLAIM_DATA_URL)]).then(function(dates){
+    const latest = new Date(Math.max(dates[0].getTime(), dates[1].getTime()));
+    banner.innerHTML = 'Showing the latest uploaded data. <strong>Last updated on: ' + formatUpdated(latest) + '</strong>';
+  }).catch(function(){ /* keep the plain banner if the date can't be read */ });
+}
+
 function fetchWorkbookRows(url){
   return fetch(url + '?v=' + Date.now(), { cache: 'no-store' }).then(function(res){
     if(!res.ok) throw new Error('not found');
@@ -298,7 +337,8 @@ function autoLoadStationData(){
       checkReady();
       runCompare();
       banner.className = 'data-banner';
-      banner.textContent = 'Showing today\u2019s data (loaded automatically).';
+      banner.textContent = 'Showing the latest uploaded data.';
+      showLastUpdated(banner);
     })
     .catch(function(){
       banner.className = 'data-banner warn';
