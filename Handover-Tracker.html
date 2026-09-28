@@ -230,9 +230,9 @@ function ago(iso){
   return d + 'd' + (r ? ' ' + r + 'h' : '');
 }
 function normOrder(s){ return String(s||'').toLowerCase().replace(/^order\s*/,'').replace(/\s+/g,''); }
-function toast(msg){
+function toast(msg, ms){
   const t = $('#toast'); t.textContent = msg; t.classList.remove('hidden');
-  clearTimeout(toast._t); toast._t = setTimeout(function(){ t.classList.add('hidden'); }, 3200);
+  clearTimeout(toast._t); toast._t = setTimeout(function(){ t.classList.add('hidden'); }, ms || 3200);
 }
 function store(k, v){ try{ if(v == null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
 function load(k){ try{ return JSON.parse(localStorage.getItem(k)); }catch(e){ return null; } }
@@ -242,14 +242,15 @@ async function apiOnce(action, payload){
   if(CONFIG.APPS_SCRIPT_URL.indexOf('PASTE') === 0) throw new Error('Set APPS_SCRIPT_URL at the top of this file first.');
   const body = Object.assign({ action:action, email:S.cred.email, password:S.cred.pw }, payload || {});
   const ctl = new AbortController();
-  const timer = setTimeout(function(){ ctl.abort(); }, 30000);
+  const limit = (action === 'sendToRetail') ? 75000 : 30000;
+  const timer = setTimeout(function(){ ctl.abort(); }, limit);
   let res, raw;
   const t0 = Date.now();
   try{
     res = await fetch(CONFIG.APPS_SCRIPT_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(body), signal:ctl.signal });
     raw = await res.text();
   }catch(x){
-    if(x && x.name === 'AbortError'){ const e = new Error('The server did not answer within 30 seconds.'); e.code = 'HTML'; e.timeout = true; throw e; }
+    if(x && x.name === 'AbortError'){ const e = new Error('The server did not answer within ' + Math.round(limit/1000) + ' seconds.'); e.code = 'HTML'; e.timeout = true; throw e; }
     throw x;
   } finally { clearTimeout(timer); }
   let j;
@@ -320,7 +321,7 @@ function timingText(){
 let retailSyncing = false, lastRetailSync = 0;
 async function maybeSyncRetail(){
   if(retailSyncing || !S.me || !S.cred) return;
-  if(!S.tickets.some(function(t){ return t.retailIssueId && t.retailStatus === 'Open'; })) return;
+  if(!S.tickets.some(function(t){ return t.retailStatus === 'Sending' || (t.retailIssueId && t.retailStatus === 'Open'); })) return;
   if(Date.now() - lastRetailSync < 90000) return;
   retailSyncing = true; lastRetailSync = Date.now();
   try{
@@ -329,6 +330,7 @@ async function maybeSyncRetail(){
       const i = S.tickets.findIndex(function(t){ return t.id === p.ticket.id; });
       if(i !== -1) S.tickets[i] = p.ticket;
       S.events = S.events.filter(function(e){ return e.ticketId !== p.ticket.id; }).concat(p.events || []);
+      if(p.ticket.holder === S.me.email && p.ticket.retailStatus === 'Open' && !p.events.some(function(e){ return e.kind === 'retail_done'; })) toast('Confirmed: ' + p.ticket.orderNumber + ' now exists in the Retail Issue Tracker.', 9000);
       if(p.ticket.holder === S.me.email && p.ticket.retailStatus === 'Answered') toast('Mohamed Sayed resolved ' + p.ticket.orderNumber + ' in the Retail Tracker. Please check it and submit.');
     });
     if((d.patches || []).length){ enrich(); render(); }
@@ -519,7 +521,8 @@ function lastComment(t){
 }
 
 function retailLine(t){
-  if(!t.retailIssueId) return '';
+  if(!t.retailIssueId && t.retailStatus !== 'Sending') return '';
+  if(t.retailStatus === 'Sending' && !t.retailIssueId) return 'Retail Issue Tracker: not confirmed yet, checking automatically. You can press Send again safely.';
   if(t.retailStatus === 'Answered') return 'Retail Issue Tracker: Mohamed Sayed resolved it. Verify, then Submit';
   if(t.retailStatus === 'Resolved') return 'Retail Issue Tracker: resolved there too';
   if(t.status === 'Resolved') return 'Retail Issue Tracker: still open there';
@@ -603,7 +606,7 @@ function detailHTML(t){
         '<dt>Opened by</dt><dd>' + esc(nameOf(t.createdBy)) + ', ' + fmtWhen(t.createdAt) + '</dd>' +
         '<dt>Issue</dt><dd dir="auto">' + esc(t.issue || '-') + '</dd>' +
         (lastComment(t) ? '<dt>Latest comment</dt><dd dir="auto">' + esc(lastComment(t)) + '</dd>' : '') +
-        (t.retailIssueId ? '<dt>Retail tracker</dt><dd>' + esc(retailLine(t).replace('Retail Issue Tracker: ','')) + '</dd>' : '') +
+        ((t.retailIssueId || t.retailStatus === 'Sending') ? '<dt>Retail tracker</dt><dd>' + esc(retailLine(t).replace('Retail Issue Tracker: ','')) + '</dd>' : '') +
         ((t.retailStatus === 'Answered' || t.retailStatus === 'Resolved') && (t.retailNewOrder || t.retailNote) ? '<dt>Sayed answer</dt><dd dir="auto">' + esc((t.retailNewOrder ? 'New order: ' + t.retailNewOrder + '. ' : '') + (t.retailNote || '')) + '</dd>' : '') +
         (t.status === 'Resolved' ? '<dt>New order</dt><dd>' + esc(t.newOrderNumber || '-') + '</dd><dt>Resolution</dt><dd dir="auto">' + esc(t.resolutionNote || '-') + '</dd>' : '') +
       '</dl></div>' +
@@ -642,9 +645,10 @@ function ask(cfg){
     ev.preventDefault(); err.textContent = '';
     const vals = {}; new FormData(form).forEach(function(v,k){ vals[k] = String(v).trim(); });
     for(const f of cfg.fields){ if(f.required && !vals[f.name]){ err.textContent = f.label + ' is required.'; return; } }
-    submit.disabled = true; const old = submit.textContent; submit.textContent = 'Saving…';
+    submit.disabled = true; const old = submit.textContent; submit.textContent = cfg.savingLabel || 'Saving…';
+    if(cfg.busyNote){ err.style.color = 'var(--muted)'; err.textContent = cfg.busyNote; }
     try{ await cfg.run(vals); dlg.close(); }
-    catch(e){ if(e.code === 'AUTH'){ dlg.close(); signOut(); return; } if(e.code === 'HTML'){ dlg.close(); toast('No clear answer from the server. Checking what was saved...'); await loadAll(true); return; } err.textContent = e.message; submit.disabled = false; submit.textContent = old; }
+    catch(e){ err.style.color = ''; if(e.code === 'AUTH'){ dlg.close(); signOut(); return; } if(e.code === 'HTML' && cfg.unclearMessage){ err.textContent = cfg.unclearMessage; submit.disabled = false; submit.textContent = old; return; } if(e.code === 'HTML'){ dlg.close(); toast('No clear answer from the server. Checking what was saved...'); await loadAll(true); return; } err.textContent = e.message; submit.disabled = false; submit.textContent = old; }
   };
   dlg.showModal();
   const first = form.querySelector('input,select,textarea'); if(first) first.focus();
@@ -693,8 +697,10 @@ function actionDialog(kind, id){
   });
   if(kind === 'retail') ask({
     title:'Send ' + t.orderNumber + ' to Retail Tracker', intro:'This opens an issue in the Retail Issue Tracker, assigned to Mohamed Sayed, with the same order, company and pharmacy. You can edit the comment he will see.', confirm:'Create in Retail Tracker',
+    savingLabel:'Creating in Retail Tracker…', busyNote:'Creating the issue in the Retail Issue Tracker. This can take up to a minute. Keep this window open.',
+    unclearMessage:'No answer yet from the Retail Issue Tracker. Nothing is lost and it will not be duplicated: it is checked automatically, or press the button again.',
     fields:[ { name:'comment', label:'Comment for Mohamed Sayed', type:'textarea', required:true, value:(lastComment(t) || t.issue || '') } ],
-    run:async function(v){ const d = await api('sendToRetail', { id:id, comment:v.comment }); toast('Created in the Retail Issue Tracker'); applyPatch(d); }
+    run:async function(v){ const d = await api('sendToRetail', { id:id, comment:v.comment }); toast('Confirmed: the issue was created in the Retail Issue Tracker and assigned to Mohamed Sayed.', 9000); applyPatch(d); }
   });
   if(kind === 'resolve'){
     const answered = t.retailStatus === 'Answered', stillOpen = t.retailIssueId && t.retailStatus === 'Open';
