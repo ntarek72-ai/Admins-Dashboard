@@ -48,7 +48,7 @@
 
   .add-box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:20px;}
   .add-box .label{font-size:12.5px;color:var(--slate);font-weight:600;margin-bottom:10px;}
-  .add-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr 1.6fr auto;gap:8px;}
+  .add-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr 1.6fr 1.3fr auto;gap:8px;}
   @media (max-width:1000px){.add-grid{grid-template-columns:1fr 1fr;}}
   .add-grid input, .add-grid select{padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:13px;background:#fff;min-width:0;width:100%;box-sizing:border-box;}
   .add-grid button{background:var(--brand);color:#fff;border:none;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer;font-family:inherit;}
@@ -87,6 +87,17 @@
   .overdue-row:hover{background:#FBE6E4;}
   .overdue-row td:first-child{border-left:4px solid var(--danger);}
   .overdue-badge{display:inline-block;margin-top:4px;background:var(--danger);color:#fff;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:800;white-space:nowrap;}
+  #hoModal{display:none;position:fixed;inset:0;background:rgba(27,36,54,.55);z-index:900;align-items:center;justify-content:center;padding:16px;}
+  .ho-card{background:#fff;border-radius:14px;padding:22px;width:100%;max-width:420px;box-shadow:0 20px 50px rgba(0,0,0,.3);}
+  .ho-card h3{margin:0 0 2px;font-size:18px;} .ho-sub{margin:0 0 14px;color:var(--slate);font-size:13px;}
+  .ho-card label{display:block;font-size:12.5px;font-weight:600;margin:10px 0 4px;}
+  .ho-card select,.ho-card textarea{width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);font-family:inherit;font-size:13px;box-sizing:border-box;}
+  .ho-card textarea{min-height:70px;resize:vertical;}
+  .ho-err{color:var(--danger);font-size:12.5px;min-height:16px;margin-top:8px;}
+  .ho-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px;}
+  .ho-actions button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer;font-family:inherit;}
+  .ho-actions button.resolve-btn{background:var(--brand);color:#fff;border:none;}
+  #toast{display:none;position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 18px;border-radius:8px;font-size:13.5px;z-index:950;max-width:min(560px,calc(100vw - 32px));}
 </style>
 </head>
 <body>
@@ -132,6 +143,7 @@
       <select id="companyInput"></select>
       <input type="text" id="oldOrderInput" placeholder="Old Order Number">
       <input type="text" id="commentInput" placeholder="Comment">
+      <select id="handoverToInput" title="Optional: also open a ticket in the Handover tracker for this person"></select>
       <button onclick="addIssue()">Add</button>
     </div>
   </div>
@@ -178,6 +190,23 @@
 
 <script>
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby_Dd08OlHPunT_hljH7UA_QzpDuP55QFACKl33VAORv5QU5R6FoDvWDiCtD32_4WZM1w/exec';
+// Ticket Handover tracker (opening a ticket there straight from this page)
+const HANDOVER_URL = 'https://script.google.com/macros/s/AKfycbzCAUSslFSoeE2RqO2zfBqpZbiNSBTWEk_iHUxrQckegSbYfnT7CkIREShR-LY9cVSW/exec';
+const HANDOVER_PEOPLE = [
+  { name: 'Ahmed Mohamed', email: 'a.mohamed@yodawy.com' },
+  { name: 'Doaa Abdelsalam', email: 'd.abdelsalam@yodawy.com' },
+  { name: 'Fatima Abdelmoneim', email: 'f.abdelmoneim@yodawy.com' },
+  { name: 'Gad Mohamed', email: 'g.mohamed@yodawy.com' },
+  { name: 'Khaled Gamal', email: 'k.gamal@yodawy.com' },
+  { name: 'Magda Taliba', email: 'm.taliba@yodawy.com' },
+  { name: 'Mahmoud El Maadawy', email: 'm.maadawy@yodawy.com' },
+  { name: 'Mohamed Ashraf', email: 'm.azzam@yodawy.com' },
+  { name: 'Mohamed El Deen', email: 'm.eldeen@yodawy.com' },
+  { name: 'Mohamed Khaled', email: 'm.khaled@yodawy.com' },
+  { name: 'Mohamed Orabi', email: 'm.orabi@yodawy.com' },
+  { name: 'Nada Onsy', email: 'n.onsy@yodawy.com' },
+  { name: 'Nermin Mustafa', email: 'n.moustafa@yodawy.com' }
+];
 const TEAM_NAMES = [
   "Mohamed Sayed", "Mahmoud El Maadawy", "Magda Taliba", "Khaled Gamal",
   "Mohamed Khaled", "Ahmed Mohamed", "Mohamed Ashraf",
@@ -347,8 +376,97 @@ function importHistorical(){
   });
 }
 
+function escHtml(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+function showToast(msg, ms){
+  const t = document.getElementById('toast');
+  if(!t) return;
+  t.textContent = msg; t.style.display = 'block';
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(function(){ t.style.display = 'none'; }, ms || 6000);
+}
+
+let handoverBusy = false;
+
+// Opens a ticket in the Ticket Handover tracker for this issue and remembers the link on the issue.
+async function sendIssueToHandover(issue, toEmail, note){
+  if(handoverBusy) return false;
+  const person = HANDOVER_PEOPLE.filter(function(p){ return p.email === toEmail; })[0];
+  if(!person) return false;
+  handoverBusy = true;
+  setSyncStatus('Creating the Handover ticket for ' + person.name + '... this can take up to a minute.');
+  try{
+    const ctl = new AbortController();
+    const timer = setTimeout(function(){ ctl.abort(); }, 75000);
+    let text;
+    try{
+      const res = await fetch(HANDOVER_URL, {
+        method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, signal: ctl.signal,
+        body: JSON.stringify({
+          action: 'create', email: currentUserEmail, password: SHARED_PASSWORD,
+          orderNumber: issue.oldOrderNumber, company: issue.company, pharmacy: issue.pharmacy, cycle: issue.cycle,
+          issue: issue.comment, to: toEmail, note: note || '', retailIssueId: issue.id
+        })
+      });
+      text = await res.text();
+    } finally { clearTimeout(timer); }
+    let j;
+    try{ j = JSON.parse(text); }catch(e){ throw new Error('The Handover tracker did not answer clearly.'); }
+    if(!j.ok) throw new Error(j.code === 'AUTH' ? 'Your email is not registered in the Handover tracker, so a ticket cannot be created from here.' : j.error);
+    issue.handoverId = j.data.id;
+    issue.handoverTo = person.name;
+    await saveIssues();
+    render();
+    setSyncStatus('Synced just now');
+    showToast('Confirmed: a Handover ticket was created and assigned to ' + person.name + '.', 9000);
+    return true;
+  }catch(e){
+    const msg = e.name === 'AbortError' ? 'No answer from the Handover tracker within 75 seconds.' : e.message;
+    setSyncStatus('Handover ticket not confirmed: ' + msg, true);
+    showToast('The issue is saved, but the Handover ticket was not confirmed: ' + msg + ' Use "Send to Handover" on its row to try again. It will not create a duplicate.', 12000);
+    return false;
+  }finally{ handoverBusy = false; }
+}
+
+function handoverCell(i){
+  if(i.handoverId) return '<br><span class="imported-tag">Handover: ' + escHtml(i.handoverTo || 'ticket created') + '</span>';
+  if(i.status === 'Resolved') return '';
+  return '<br><button class="resolve-btn" style="margin-top:4px;background:var(--card);color:var(--ink);border:1px solid var(--line);" onclick="openHandoverDialog(' + i.id + ')">Send to Handover</button>';
+}
+
+function closeHandoverDialog(){
+  const box = document.getElementById('hoModal');
+  if(box){ box.style.display = 'none'; box.innerHTML = ''; }
+}
+
+function openHandoverDialog(id){
+  if(!needFresh()) return;
+  const issue = issues.filter(function(i){ return i.id === id; })[0];
+  if(!issue || issue.handoverId) return;
+  const box = document.getElementById('hoModal');
+  box.innerHTML = '<div class="ho-card">' +
+    '<h3>Send to Handover</h3><p class="ho-sub">' + escHtml(issue.oldOrderNumber) + '</p>' +
+    '<label>Assign the Handover ticket to</label>' +
+    '<select id="hoPerson"><option value="">Choose person</option>' + HANDOVER_PEOPLE.map(function(p){ return '<option value="' + p.email + '">' + p.name + '</option>'; }).join('') + '</select>' +
+    '<label>Note (optional)</label><textarea id="hoNote"></textarea>' +
+    '<div class="ho-err" id="hoErr"></div>' +
+    '<div class="ho-actions"><button id="hoCancel" type="button">Cancel</button><button id="hoGo" type="button" class="resolve-btn">Create ticket</button></div></div>';
+  box.style.display = 'flex';
+  document.getElementById('hoCancel').onclick = closeHandoverDialog;
+  document.getElementById('hoGo').onclick = async function(){
+    const to = document.getElementById('hoPerson').value;
+    const err = document.getElementById('hoErr'), go = document.getElementById('hoGo');
+    if(!to){ err.textContent = 'Choose who the ticket is for.'; return; }
+    err.textContent = ''; go.disabled = true; go.textContent = 'Creating...';
+    const ok = await sendIssueToHandover(issue, to, document.getElementById('hoNote').value.trim());
+    if(ok){ closeHandoverDialog(); }
+    else { go.disabled = false; go.textContent = 'Create ticket'; err.textContent = 'Not confirmed. Nothing is duplicated: you can press again.'; }
+  };
+}
+
 async function addIssue(){
   if(!needFresh()) return;
+  const handoverTo = document.getElementById('handoverToInput').value;
   const submittedBy = document.getElementById('submittedByInput').value;
   const cycle = document.getElementById('cycleInput').value;
   const pharmacy = document.getElementById('pharmacyInput').value;
@@ -377,6 +495,7 @@ async function addIssue(){
 
   document.getElementById('oldOrderInput').value = '';
   document.getElementById('commentInput').value = '';
+  document.getElementById('handoverToInput').value = '';
 
   await saveIssues();
   populateFilterOptions();
@@ -391,6 +510,8 @@ async function addIssue(){
     cycle: cycle,
     dateOpened: issue.dateOpened
   });
+
+  if(handoverTo) await sendIssueToHandover(issue, handoverTo, '');
 }
 
 async function resolveIssue(id){
@@ -591,7 +712,7 @@ function render(){
       '<tr' + (overdue ? ' class="overdue-row"' : '') + '>' +
         '<td>' + (i.cycle || '\u2014') + '</td>' +
         '<td><span class="status-badge ' + statusCls + '">' + (i.status === 'Resolved' ? 'Resolved' : 'Open') + '</span>' +
-          (overdue ? '<br><span class="overdue-badge">' + OVERDUE_DAYS + '+ days</span>' : '') + '</td>' +
+          (overdue ? '<br><span class="overdue-badge">' + OVERDUE_DAYS + '+ days</span>' : '') + handoverCell(i) + '</td>' +
         '<td>' + (i.submittedBy || '\u2014') + importedTag + '</td>' +
         '<td>' + i.oldOrderNumber + '</td>' +
         '<td>' + (i.pharmacy || '\u2014') + '</td>' +
@@ -731,6 +852,11 @@ fillSelect('submittedByInput', SUBMITTER_NAMES, 'Submitted by');
 fillSelect('cycleInput', CYCLE_LIST, 'Cycle');
 fillSelect('pharmacyInput', PHARMACY_LIST, 'Pharmacy');
 fillSelect('companyInput', COMPANY_LIST, 'Company');
+(function(){
+  const sel = document.getElementById('handoverToInput');
+  if(sel) sel.innerHTML = '<option value="">No Handover ticket</option>' + HANDOVER_PEOPLE.map(function(p){
+    return '<option value="' + p.email + '">Handover: ' + p.name + '</option>'; }).join('');
+})();
 
 async function init(){
   const loading = loadIssues();                                   // start asking the server right away
@@ -775,6 +901,7 @@ const TEAM_EMAILS = {
   "f.abdelmoneim@yodawy.com": "Fatima Abdelmoneim"
 };
 const SHARED_PASSWORD = "Yodawy@2026";
+
 const ADMIN_EMAIL = "n.onsy@yodawy.com";
 let currentUserEmail = null;
 
@@ -806,5 +933,7 @@ function tryLogin(){
 }
 document.getElementById('passInput').addEventListener('keydown', function(e){ if(e.key==='Enter') tryLogin(); });
 </script>
+<div id="hoModal"></div>
+<div id="toast" role="status"></div>
 </body>
 </html>
