@@ -46,6 +46,9 @@
   .btn.good:hover{background:#075C56}
   .btn:disabled{opacity:.55;cursor:default}
   .btn.block{width:100%;padding:11px}
+  .btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
+  .btn.danger:hover{background:#8F1B12}
+  .btn.quiet.red{color:var(--danger)}
   .btn.quiet{border-color:transparent;background:transparent;color:var(--muted);padding:6px 8px}
 
   /* ---------- shell ---------- */
@@ -596,6 +599,7 @@ function eventCore(e, a, b){
     case 'retail':  return a + ' sent it to the Retail Issue Tracker (assigned to Mohamed Sayed)';
     case 'comment': return a + ' added a comment';
     case 'type':    return a + ' changed the order type';
+    case 'edit':    return a + ' edited the ticket';
     case 'retail_link': return 'Linked to an issue in the Retail Issue Tracker';
     case 'retail_done': return 'Mohamed Sayed resolved it in the Retail Issue Tracker';
     case 'resolve': return a + ' submitted it as resolved';
@@ -606,7 +610,8 @@ function eventCore(e, a, b){
 function actionsHTML(t){
   const core = actionsCore(t);
   const canType = !S.me.viewer && (t.holder === S.me.email || S.me.admin || t.createdBy === S.me.email);
-  return core + (canType ? '<button class="btn quiet" data-act="settype" data-id="' + esc(t.id) + '">Set order type</button>' : '');
+  const admin = S.me.admin ? '<button class="btn quiet" data-act="edit" data-id="' + esc(t.id) + '">Edit ticket</button><button class="btn quiet red" data-act="delete" data-id="' + esc(t.id) + '">Delete ticket</button>' : '';
+  return core + (canType ? '<button class="btn quiet" data-act="settype" data-id="' + esc(t.id) + '">Set order type</button>' : '') + admin;
 }
 
 function actionsCore(t){
@@ -672,7 +677,7 @@ function ask(cfg){
     (cfg.before || '') + cfg.fields.map(fieldHTML).join('') +
     '<p class="err" role="alert"></p>' +
     '<div class="dlg-foot"><button class="btn" type="button" data-close>Cancel</button>' +
-    '<button class="btn primary" type="submit">' + esc(cfg.confirm) + '</button></div></form>';
+    '<button class="btn ' + (cfg.danger ? 'danger' : 'primary') + '" type="submit">' + esc(cfg.confirm) + '</button></div></form>';
   const form = dlg.querySelector('form'), err = dlg.querySelector('.err'), submit = form.querySelector('[type=submit]');
   form.querySelector('[data-close]').onclick = function(){ dlg.close(); };
   if(cfg.onOpen) cfg.onOpen(form);
@@ -731,6 +736,38 @@ function actionDialog(kind, id){
              { name:'note', label:'Note (optional)', type:'textarea', placeholder:'What changed or what needs to be done?' } ],
     run:async function(v){ const d = await api('resend', { id:id, to:v.to, note:v.note }); toast('Resent to ' + nameOf(v.to)); S.tab = 'waiting'; applyPatch(d); }
   });
+  if(kind === 'edit'){
+    const keep = function(list, cur){ return (cur && list.indexOf(cur) === -1) ? [cur].concat(list) : list; };   // never lose a value that is not in the list any more
+    const cycles = [];
+    for(let y = 2026; y <= 2027; y++) MONTHS.forEach(function(m){ cycles.push(m + ' ' + y); });
+    const fields = [
+      { name:'orderNumber', label:'Order number', required:true, value:t.orderNumber },
+      { name:'orderType', label:'Order type', type:'select', options:ORDER_TYPES, value:(t.orderType || ''), placeholder:'Not set (guess from the number)' },
+      { name:'company', label:'Company', type:'select', options:keep(CONFIG.COMPANIES, t.company), value:(t.company || ''), placeholder:'No company' },
+      { name:'pharmacy', label:'Pharmacy', type:'select', options:keep(CONFIG.PHARMACIES, t.pharmacy), value:(t.pharmacy || ''), placeholder:'No pharmacy' },
+      { name:'cycle', label:'Cycle', type:'select', options:keep(cycles, t.cycle), value:(t.cycle || ''), placeholder:'No cycle' },
+      { name:'issue', label:'Issue', type:'textarea', value:(t.issue || '') }
+    ];
+    if(t.status === 'Resolved'){
+      fields.push({ name:'newOrderNumber', label:'New order number', value:(t.newOrderNumber || '') });
+      fields.push({ name:'resolutionNote', label:'Resolution note', type:'textarea', value:(t.resolutionNote || '') });
+    }
+    ask({
+      title:'Edit ' + t.orderNumber, intro:'Fix what is wrong. Who holds the ticket and its status do not change, and every change is written in the history.', confirm:'Save changes', fields:fields,
+      run:async function(v){ const d = await api('editTicket', { id:id, fields:v }); toast('Ticket updated'); applyPatch(d); }
+    });
+  }
+  if(kind === 'delete') ask({
+    title:'Delete ' + t.orderNumber + '?', intro:'This deletes the ticket and its whole history for good. It cannot be undone.', confirm:'Delete permanently', danger:true, fields:[],
+    run:async function(){
+      await api('deleteTicket', { id:id });
+      S.tickets = S.tickets.filter(function(x){ return x.id !== id; });
+      S.events = S.events.filter(function(e){ return e.ticketId !== id; });
+      if(S.open === id) S.open = null;
+      toast('Ticket deleted');
+      enrich(); fillFilters(); render();
+    }
+  });
   if(kind === 'settype') ask({
     title:'Order type for ' + t.orderNumber, intro:'Current type: ' + (t.orderType || 'not set') + '.', confirm:'Save type',
     fields:[ { name:'orderType', label:'Order type', type:'select', options:ORDER_TYPES, required:true, value:(t.orderType || inferType(t.orderNumber)), placeholder:'Choose type' } ],
@@ -781,7 +818,7 @@ function stamp(iso){
 function plainEvent(e){
   const a = nameOf(e.from), b = nameOf(e.to), by = (e.by && e.by !== e.from && e.kind !== 'create' && e.kind !== 'reopen') ? ' (by ' + nameOf(e.by) + ')' : '';
   const t = { create:a + ' opened and sent to ' + b, resend:a + ' resent to ' + b, reopen:a + ' reopened and sent to ' + b,
-              receive:a + ' confirmed receipt', retail:a + ' sent to the Retail Issue Tracker', comment:a + ' commented', type:a + ' changed the order type', retail_link:'Linked to an issue in the Retail Issue Tracker', retail_done:'Mohamed Sayed resolved it in the Retail Issue Tracker', resolve:a + ' submitted as resolved' }[e.kind] || e.kind;
+              receive:a + ' confirmed receipt', retail:a + ' sent to the Retail Issue Tracker', comment:a + ' commented', edit:a + ' edited the ticket', type:a + ' changed the order type', edit:a + ' edited the ticket', retail_link:'Linked to an issue in the Retail Issue Tracker', retail_done:'Mohamed Sayed resolved it in the Retail Issue Tracker', resolve:a + ' submitted as resolved' }[e.kind] || e.kind;
   return t + by + (e.note ? ' - ' + e.note : '');
 }
 function exportCSV(){

@@ -228,7 +228,7 @@ let issues = [];
 let handoverLinks = {};   // issue id -> the Handover ticket made for it (asked from the Handover tracker itself)
 let dataFresh = false;   // true only after the latest data was really loaded from the server
 let notifyEnabled = false;
-let saving = false;
+let opsRunning = 0;      // changes being sent to the server right now
 let lastLocalSaveAt = 0;
 
 function fmtDateTime(d){
@@ -259,7 +259,7 @@ function setSyncStatus(msg, isError){
 
 async function manualRefresh(){
   const btn = document.getElementById('refreshBtn');
-  if(saving) return;
+  if(opsRunning > 0) return;
   if(btn){ btn.disabled = true; btn.textContent = 'Refreshing...'; }
   await loadIssues();
   populateFilterOptions();
@@ -315,33 +315,71 @@ async function loadIssues(){
   }
 }
 
-async function saveIssues(){
-  if(saving) return;
-  saving = true;
+// Sends ONE change to the server. The server applies it to its current list, so it can never overwrite
+// somebody else's work (the old way sent the whole list every time).
+async function serverOp(action, payload){
+  opsRunning++;
+  setSyncStatus('Saving...');
+  const ctl = new AbortController();
+  const timer = setTimeout(function(){ ctl.abort(); }, 30000);
   try{
-    setSyncStatus('Saving...');
-    const res = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'save', issues: issues, notificationsEnabled: notifyEnabled })
-    });
-    if(res.ok){
-      setSyncStatus('Saved just now');
-      lastLocalSaveAt = Date.now();
-    } else {
-      setSyncStatus('Save failed: HTTP ' + res.status, true);
-    }
+    let text;
+    try{
+      const res = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(Object.assign({ action: action }, payload)),
+        signal: ctl.signal
+      });
+      text = await res.text();
+    } finally { clearTimeout(timer); }
+    let j;
+    try{ j = JSON.parse(text); }
+    catch(e){ const err = new Error('The server did not answer clearly.'); err.unclear = true; throw err; }
+    if(j.status === 'error') throw new Error(j.message || 'The server refused this change.');
+    lastLocalSaveAt = Date.now();
+    setSyncStatus('Saved just now');
+    return j;
   }catch(e){
-    setSyncStatus('Save error: ' + e.message, true);
+    let err = e;
+    if(e && e.name === 'AbortError'){ err = new Error('No answer within 30 seconds.'); err.unclear = true; }
+    else if(e instanceof TypeError){ err = new Error('No connection to the server.'); err.unclear = true; }
+    setSyncStatus('Save error: ' + err.message, true);
+    throw err;
+  }finally{ opsRunning--; }
+}
+
+// After a failed change: if we cannot tell whether it reached the server, reload the list and say so.
+async function afterFailedOp(e, what){
+  if(e && e.unclear){
+    await loadIssues();
+    populateFilterOptions();
+    render();
+    alert('Could not confirm that the change was saved (' + e.message + '). The list was reloaded from the server. Please check it before trying again.');
+  } else {
+    alert('Could not ' + what + ': ' + (e && e.message ? e.message : 'unknown error') + '.');
   }
-  saving = false;
+}
+
+function putIssueLocally(issue){
+  if(!issue) return;
+  const idx = issues.findIndex(function(i){ return Number(i.id) === Number(issue.id); });
+  if(idx === -1) issues.push(issue); else issues[idx] = issue;
 }
 
 async function onNotifyToggle(){
   if(!isAdmin()) return;
-  if(!dataFresh){ document.getElementById('notifyToggle').checked = notifyEnabled; needFresh(); return; }
-  notifyEnabled = document.getElementById('notifyToggle').checked;
-  await saveIssues();
+  const box = document.getElementById('notifyToggle');
+  if(!dataFresh){ box.checked = notifyEnabled; needFresh(); return; }
+  const wanted = box.checked;
+  try{
+    await serverOp('setNotifications', { enabled: wanted });
+    notifyEnabled = wanted;
+    saveSnapshot();
+  }catch(e){
+    box.checked = notifyEnabled;
+    await afterFailedOp(e, 'change the email setting');
+  }
 }
 
 async function notify(action, payload){
@@ -357,26 +395,16 @@ async function notify(action, payload){
   }
 }
 
-function importHistorical(){
+async function importHistorical(){
   if(!isAdmin()) return;
   if(!needFresh()) return;
-  const byId = {};
-  issues.forEach(function(i){ byId[i.id] = i; });
-  let added = 0, updated = 0;
-  HISTORICAL_DATA.forEach(function(h){
-    if(byId[h.id]){
-      Object.assign(byId[h.id], h);
-      updated++;
-    } else {
-      issues.push(Object.assign({}, h));
-      added++;
-    }
-  });
-  saveIssues().then(function(){
+  try{
+    const r = await serverOp('importIssues', { issues: HISTORICAL_DATA });
+    await loadIssues();
     populateFilterOptions();
     render();
-    alert('Historical data synced: ' + added + ' added, ' + updated + ' updated.');
-  });
+    alert('Historical data synced: ' + r.added + ' added, ' + r.updated + ' updated.');
+  }catch(e){ await afterFailedOp(e, 'load the historical data'); }
 }
 
 function escHtml(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -392,6 +420,21 @@ function showToast(msg, ms){
 let handoverBusy = false;
 
 // Opens a ticket in the Ticket Handover tracker for this issue and remembers the link on the issue.
+async function callHandover(fields){
+  const ctl = new AbortController();
+  const timer = setTimeout(function(){ ctl.abort(); }, 75000);
+  let text;
+  try{
+    const res = await fetch(HANDOVER_URL, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, signal: ctl.signal,
+      body: JSON.stringify(Object.assign({ action: 'create', email: currentUserEmail, password: SHARED_PASSWORD }, fields))
+    });
+    text = await res.text();
+  } finally { clearTimeout(timer); }
+  try{ return JSON.parse(text); }catch(e){ throw new Error('The Handover tracker did not answer clearly.'); }
+}
+
+// returns true (ticket confirmed), 'cancelled' (the person chose to stop) or false (not confirmed)
 async function sendIssueToHandover(issue, toEmail, note){
   if(handoverBusy) return false;
   const person = HANDOVER_PEOPLE.filter(function(p){ return p.email === toEmail; })[0];
@@ -399,22 +442,26 @@ async function sendIssueToHandover(issue, toEmail, note){
   handoverBusy = true;
   setSyncStatus('Creating the Handover ticket for ' + person.name + '... this can take up to a minute.');
   try{
-    const ctl = new AbortController();
-    const timer = setTimeout(function(){ ctl.abort(); }, 75000);
-    let text;
-    try{
-      const res = await fetch(HANDOVER_URL, {
-        method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, signal: ctl.signal,
-        body: JSON.stringify({
-          action: 'create', email: currentUserEmail, password: SHARED_PASSWORD,
-          orderNumber: issue.oldOrderNumber, company: issue.company, pharmacy: issue.pharmacy, cycle: issue.cycle,
-          issue: issue.comment, to: toEmail, note: note || '', retailIssueId: issue.id
-        })
-      });
-      text = await res.text();
-    } finally { clearTimeout(timer); }
-    let j;
-    try{ j = JSON.parse(text); }catch(e){ throw new Error('The Handover tracker did not answer clearly.'); }
+    const base = {
+      orderNumber: issue.oldOrderNumber, company: issue.company, pharmacy: issue.pharmacy, cycle: issue.cycle,
+      issue: issue.comment, to: toEmail, note: note || '', retailIssueId: issue.id
+    };
+    let j = await callHandover(base);
+    let linkedExisting = false;
+    if(!j.ok && j.code === 'EXISTS' && j.extra){
+      // This order already has a Handover ticket that was never linked to this issue.
+      const c = j.extra;
+      const st = HANDOVER_STATUS_TEXT[c.status] || c.status;
+      if(confirm('A Handover ticket for this order already exists:\n\nTicket ' + c.ticketId + ' (with ' + c.holder + ', ' + st + ').\n\nOK = link this issue to that ticket (no new ticket is created).\nCancel = do not link.')){
+        j = await callHandover(Object.assign({}, base, { linkTicketId: c.ticketId }));
+        linkedExisting = true;
+      } else if(confirm('Create a NEW separate ticket for this order instead?')){
+        j = await callHandover(Object.assign({}, base, { forceNew: true }));
+      } else {
+        setSyncStatus('Synced just now');
+        return 'cancelled';
+      }
+    }
     if(!j.ok) throw new Error(j.code === 'AUTH' ? 'Your email is not registered in the Handover tracker, so a ticket cannot be created from here.' : j.error);
     const tk = (j.data && j.data.ticket) || {};
     const holderPerson = HANDOVER_PEOPLE.filter(function(p){ return p.email === tk.holder; })[0];
@@ -424,11 +471,14 @@ async function sendIssueToHandover(issue, toEmail, note){
     live.handoverTo = holderName;
     handoverLinks[String(issue.id)] = { issueId: String(issue.id), ticketId: j.data.id, holder: holderName, status: tk.status || 'Sent' };
     render();
-    await saveWhenFree();
+    try{ await serverOp('updateIssue', { id: issue.id, fields: { handoverId: j.data.id, handoverTo: holderName } }); }
+    catch(e){ /* the Handover tracker keeps the link too, so the tag comes back on the next refresh */ }
     saveSnapshot();
     render();
     setSyncStatus('Synced just now');
-    showToast('Confirmed: Handover ticket ' + j.data.id + ' is with ' + holderName + '.' + (holderName !== person.name ? ' (This issue already had a ticket, so no second one was created.)' : ''), 9000);
+    showToast(linkedExisting
+      ? 'Linked to the existing Handover ticket ' + j.data.id + ' (with ' + holderName + '). No second ticket was created.'
+      : 'Confirmed: Handover ticket ' + j.data.id + ' is with ' + holderName + '.' + (holderName !== person.name ? ' (This issue already had a ticket, so no second one was created.)' : ''), 9000);
     return true;
   }catch(e){
     const msg = e.name === 'AbortError' ? 'No answer from the Handover tracker within 75 seconds.' : e.message;
@@ -439,7 +489,7 @@ async function sendIssueToHandover(issue, toEmail, note){
 }
 
 const HANDOVER_STATUS_TEXT = { Sent: 'waiting to be confirmed', Received: 'confirmed', Resolved: 'resolved' };
-let handoverLinksLoading = false, handoverLinksAt = 0;
+let handoverLinksLoading = false, handoverLinksAt = 0, handoverLinksTrusted = false;
 
 // Ask the Handover tracker which issues already have a ticket. It is the source of truth, so the tag
 // stays correct even if this page's own copy was overwritten by someone else's save.
@@ -461,6 +511,7 @@ async function loadHandoverLinks(){
       j.data.links.forEach(function(l){ map[String(l.issueId)] = l; });
       handoverLinks = map;
       handoverLinksAt = Date.now();
+      handoverLinksTrusted = true;      // the Handover tracker answered, so its list is the truth
       saveSnapshot();
       render();
     }
@@ -468,10 +519,6 @@ async function loadHandoverLinks(){
   handoverLinksLoading = false;
 }
 
-async function saveWhenFree(){
-  for(let k = 0; k < 40 && saving; k++) await new Promise(function(r){ setTimeout(r, 300); });
-  await saveIssues();
-}
 
 // An issue that was opened from the Ticket Handover tracker carries "(Ticket Handover T1234ABCD)" in its comment.
 function handoverSource(i){
@@ -480,12 +527,18 @@ function handoverSource(i){
   return m ? m[1] : null;
 }
 
+function hasHandover(i){
+  if(handoverLinks[String(i.id)]) return true;
+  if(i.handoverId && !handoverLinksTrusted) return true;
+  return !!handoverSource(i);
+}
+
 function handoverCell(i){
   const src = handoverSource(i);
   if(src) return '<br><span class="origin-tag">From Handover Tracker</span><br><span class="imported-tag">Ticket ' + escHtml(src) + '</span>';
   const link = handoverLinks[String(i.id)];
   if(link) return '<br><span class="origin-tag">Sent to Handover: ' + escHtml(link.holder) + '</span><br><span class="imported-tag">Ticket ' + escHtml(link.ticketId) + ', ' + (HANDOVER_STATUS_TEXT[link.status] || escHtml(link.status)) + '</span>';
-  if(i.handoverId) return '<br><span class="origin-tag">Sent to Handover: ' + escHtml(i.handoverTo || 'ticket created') + '</span>';
+  if(i.handoverId && !handoverLinksTrusted) return '<br><span class="origin-tag">Sent to Handover: ' + escHtml(i.handoverTo || 'ticket created') + '</span>';
   if(i.status === 'Resolved') return '';
   return '<br><button class="resolve-btn" style="margin-top:4px;background:var(--card);color:var(--ink);border:1px solid var(--line);" onclick="openHandoverDialog(' + i.id + ')">Send to Handover</button>';
 }
@@ -498,7 +551,7 @@ function closeHandoverDialog(){
 function openHandoverDialog(id){
   if(!needFresh()) return;
   const issue = issues.filter(function(i){ return i.id === id; })[0];
-  if(!issue || issue.handoverId || handoverLinks[String(issue.id)] || handoverSource(issue)) return;
+  if(!issue || hasHandover(issue)) return;
   const box = document.getElementById('hoModal');
   box.innerHTML = '<div class="ho-card">' +
     '<h3>Send to Handover</h3><p class="ho-sub">' + escHtml(issue.oldOrderNumber) + '</p>' +
@@ -515,7 +568,8 @@ function openHandoverDialog(id){
     if(!to){ err.textContent = 'Choose who the ticket is for.'; return; }
     err.textContent = ''; go.disabled = true; go.textContent = 'Creating...';
     const ok = await sendIssueToHandover(issue, to, document.getElementById('hoNote').value.trim());
-    if(ok){ closeHandoverDialog(); }
+    if(ok === true){ closeHandoverDialog(); }
+    else if(ok === 'cancelled'){ go.disabled = false; go.textContent = 'Create ticket'; }
     else { go.disabled = false; go.textContent = 'Create ticket'; err.textContent = 'Not confirmed. Nothing is duplicated: you can press again.'; }
   };
 }
@@ -531,41 +585,22 @@ async function addIssue(){
   const comment = document.getElementById('commentInput').value.trim();
   if(!submittedBy || !cycle || !oldOrderNumber) return;
 
-  const now = new Date();
-  const issue = {
-    id: now.getTime(),
-    cycle: cycle,
-    submittedBy: submittedBy,
-    oldOrderNumber: oldOrderNumber,
-    pharmacy: pharmacy,
-    company: company,
-    comment: comment,
-    dateOpened: fmtDateTime(now),
-    assignedTo: FIXED_ASSIGNEE,
-    newOrderNumber: '',
-    resolutionComment: '',
-    dateResolved: '',
-    status: 'Open'
-  };
-  issues.push(issue);
+  let r;
+  try{
+    r = await serverOp('addIssue', { issue: {
+      cycle: cycle, submittedBy: submittedBy, oldOrderNumber: oldOrderNumber, pharmacy: pharmacy,
+      company: company, comment: comment, dateOpened: fmtDateTime(new Date())
+    } });
+  }catch(e){ await afterFailedOp(e, 'add the issue'); return; }   // what was typed stays in the form
 
+  const issue = r.issue;
+  putIssueLocally(issue);
   document.getElementById('oldOrderInput').value = '';
   document.getElementById('commentInput').value = '';
   document.getElementById('handoverToInput').value = '';
-
-  await saveIssues();
   populateFilterOptions();
   render();
-
-  notify('notifyNewIssue', {
-    submittedBy: submittedBy,
-    oldOrderNumber: oldOrderNumber,
-    pharmacy: pharmacy,
-    company: company,
-    comment: comment,
-    cycle: cycle,
-    dateOpened: issue.dateOpened
-  });
+  if(r.duplicate) showToast('This issue had just been saved, so no second copy was created.', 7000);
 
   if(handoverTo) await sendIssueToHandover(issue, handoverTo, '');
 }
@@ -580,26 +615,19 @@ async function resolveIssue(id){
     alert('Please enter a resolution comment (a new order number is optional).');
     return;
   }
+  let r;
+  try{
+    r = await serverOp('resolveIssue', { id: id, newOrderNumber: newOrderNumber, resolutionComment: resolutionComment, dateResolved: fmtDateTime(new Date()) });
+  }catch(e){ await afterFailedOp(e, 'resolve the issue'); return; }
 
-  const now = new Date();
-  issues[idx].newOrderNumber = newOrderNumber;
-  issues[idx].resolutionComment = resolutionComment;
-  issues[idx].dateResolved = fmtDateTime(now);
-  issues[idx].status = 'Resolved';
-
-  await saveIssues();
+  if(r.status === 'notfound'){
+    await loadIssues(); populateFilterOptions(); render();
+    alert('This issue no longer exists (someone deleted it). The list was reloaded.');
+    return;
+  }
+  putIssueLocally(r.issue);
   render();
-
-  notify('notifyResolved', {
-    submittedBy: issues[idx].submittedBy,
-    oldOrderNumber: issues[idx].oldOrderNumber,
-    pharmacy: issues[idx].pharmacy,
-    company: issues[idx].company,
-    newOrderNumber: newOrderNumber,
-    resolutionComment: resolutionComment,
-    assignedTo: issues[idx].assignedTo,
-    dateResolved: issues[idx].dateResolved
-  });
+  if(r.status === 'already') alert('Someone else already resolved this issue, so your text was not saved. Their answer is shown now.');
 }
 
 function makeValidDate(y, mo, d, h, mi, s){
@@ -832,20 +860,22 @@ async function saveEditIssue(id){
   const idx = issues.findIndex(function(i){ return i.id === id; });
   if(idx === -1) return;
   const get = function(field){ return document.getElementById('e_' + field + '_' + id).value; };
-  issues[idx].cycle = get('cycle');
-  issues[idx].submittedBy = get('submittedBy');
-  issues[idx].oldOrderNumber = get('oldOrder').trim();
-  issues[idx].pharmacy = get('pharmacy');
-  issues[idx].company = get('company');
-  issues[idx].comment = get('comment').trim();
-  issues[idx].dateOpened = get('dateOpened').trim();
-  issues[idx].assignedTo = get('assignedTo').trim();
-  issues[idx].newOrderNumber = get('newOrder').trim();
-  issues[idx].resolutionComment = get('resComment').trim();
-  issues[idx].dateResolved = get('dateResolved').trim();
-  issues[idx].status = get('status');
+  const fields = {
+    cycle: get('cycle'), submittedBy: get('submittedBy'), oldOrderNumber: get('oldOrder').trim(), pharmacy: get('pharmacy'),
+    company: get('company'), comment: get('comment').trim(), dateOpened: get('dateOpened').trim(), assignedTo: get('assignedTo').trim(),
+    newOrderNumber: get('newOrder').trim(), resolutionComment: get('resComment').trim(), dateResolved: get('dateResolved').trim(), status: get('status')
+  };
+  let r;
+  try{ r = await serverOp('updateIssue', { id: id, fields: fields }); }
+  catch(e){ await afterFailedOp(e, 'save the edit'); return; }
+  if(r.status === 'notfound'){
+    editingIssueId = null;
+    await loadIssues(); populateFilterOptions(); render();
+    alert('This issue no longer exists (someone deleted it). The list was reloaded.');
+    return;
+  }
+  putIssueLocally(r.issue);
   editingIssueId = null;
-  await saveIssues();
   populateFilterOptions();
   render();
 }
@@ -854,8 +884,9 @@ async function deleteIssue(id){
   if(!isAdmin()) return;
   if(!needFresh()) return;
   if(!confirm('Delete this issue? This cannot be undone.')) return;
-  issues = issues.filter(function(i){ return i.id !== id; });
-  await saveIssues();
+  try{ await serverOp('deleteIssue', { id: id }); }
+  catch(e){ await afterFailedOp(e, 'delete the issue'); return; }
+  issues = issues.filter(function(i){ return Number(i.id) !== Number(id); });
   populateFilterOptions();
   render();
 }
@@ -917,6 +948,7 @@ fillSelect('companyInput', COMPANY_LIST, 'Company');
 async function init(){
   const loading = loadIssues();                                   // start asking the server right away
   await new Promise(function(r){ setTimeout(r, 0); });            // let the rest of the page finish setting up first
+  loadHandoverLinks();                                            // ask the Handover tracker at the same time, not after
   const snap = readSnapshot();
   if(snap && !dataFresh){
     issues = snap.issues;
