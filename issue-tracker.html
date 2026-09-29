@@ -124,6 +124,7 @@
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
       <div class="badge" id="overdueBadge" style="display:none;background:var(--danger);">0 overdue</div>
       <div class="badge" id="openCountBadge">0 open</div>
+      <span class="sync-status" id="syncStatusTop"></span>
       <button class="import-btn" id="refreshBtn" onclick="manualRefresh()">Refresh</button>
     </div>
   </header>
@@ -209,15 +210,42 @@ const HANDOVER_PEOPLE = [
   { name: 'Nermin Mustafa', email: 'n.moustafa@yodawy.com' }
 ];
 const TEAM_NAMES = [
-  "Mohamed Sayed", "Mahmoud El Maadawy", "Magda Taliba", "Khaled Gamal",
-  "Mohamed Khaled", "Ahmed Mohamed", "Mohamed Ashraf",
-  "Nermin Mustafa", "Mohamed El Deen", "Nada Onsy", "Fatima Abdelmoneim"
+  "Ahmed Mohamed", "Fatima Abdelmoneim", "Khaled Gamal", "Magda Taliba", "Mahmoud El Maadawy", "Mohamed Ashraf", "Mohamed El Deen", "Mohamed Khaled", "Mohamed Sayed", "Nada Onsy", "Nermin Mustafa"
 ];
 const PHARMACY_LIST = ["El Hadaba","Marwa","Moslmany","Mohamed Salam","Farghal","ENGY","Mo Wagih","Omranya"];
 const COMPANY_LIST = [
-  "Anabib El Petrol","Ahly Medical","Petrojet","AXA Services Egypt","GASCO","EGAS","Omega Care",
-  "MISR HEALTH CARE","City Stars","Sainco","MetLife","Egyptian Customs Authority","El Ganzory Hospital",
-  "El Mashreq","GlobeMed","Next Care","HyperOne","Limitless Care","Estsharion","Seha One","EMC","Medsure"
+  "Administrative control Authority (ACA)",
+  "Ahly Medical",
+  "Anabib El Petrol",
+  "AXA Services Egypt",
+  "Bupa",
+  "Cinema",
+  "Cinnabon",
+  "City Stars",
+  "EGAS",
+  "Egyptian Customs Authority",
+  "El Ganzory Hospital",
+  "El Mashreq",
+  "EMC",
+  "Estsharion",
+  "GASCO",
+  "GlobeMed",
+  "HyperOne",
+  "Limitless Care",
+  "Mednet",
+  "Medright",
+  "MedRight TPA",
+  "Medsure",
+  "MetLife",
+  "MISR HEALTH CARE",
+  "Napp",
+  "Next Care",
+  "Omega Care",
+  "Petrojet",
+  "Sainco",
+  "Seha One",
+  "Tawoon",
+  "Wadi El Neel"
 ];
 const CYCLE_LIST = ["April 2026","May 2026","June 2026","July 2026","August 2026","September 2026","October 2026","November 2026","December 2026"];
 const FIXED_ASSIGNEE = "Mohamed Sayed";
@@ -251,10 +279,14 @@ function fillSelect(id, list, includeBlank){
 }
 
 function setSyncStatus(msg, isError){
-  const el = document.getElementById('syncStatus');
-  if(!el) return;
-  el.textContent = msg;
-  el.style.color = isError ? 'var(--danger)' : 'var(--slate)';
+  const stamped = /Loading|Saving|Creating|Showing the copy/.test(msg) ? msg :
+    msg.replace(/^(Synced|Saved) just now/, function(m){ return m.replace('just now', 'at ' + new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})); });
+  ['syncStatus','syncStatusTop'].forEach(function(id){
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.textContent = stamped;
+    el.style.color = isError ? 'var(--danger)' : 'var(--slate)';
+  });
 }
 
 async function manualRefresh(){
@@ -285,15 +317,24 @@ function needFresh(){
   return false;
 }
 
+function fetchWithTimeout_(url, opts, ms){
+  return new Promise(function(resolve, reject){
+    let settled = false;
+    const timer = setTimeout(function(){
+      if(settled) return; settled = true;
+      const e = new Error('No answer within ' + Math.round(ms/1000) + ' seconds.'); e.isTimeout = true;
+      reject(e);
+    }, ms);
+    fetch(url, opts).then(function(res){ if(settled) return; settled = true; clearTimeout(timer); resolve(res); },
+      function(err){ if(settled) return; settled = true; clearTimeout(timer); reject(err); });
+  });
+}
+
 async function loadIssues(){
   setSyncStatus('Loading... (the first load after a quiet period can take up to 10 seconds)');
   for(let attempt = 1; attempt <= 2; attempt++){
     try{
-      const ctl = new AbortController();
-      const timer = setTimeout(function(){ ctl.abort(); }, 30000);
-      let res;
-      try{ res = await fetch(APPS_SCRIPT_URL, { signal: ctl.signal }); }
-      finally{ clearTimeout(timer); }
+      const res = await fetchWithTimeout_(APPS_SCRIPT_URL, {}, 30000);
       if(!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       issues = data.issues || [];
@@ -307,7 +348,7 @@ async function loadIssues(){
       return true;
     }catch(e){
       if(attempt === 2){
-        setSyncStatus('Load error: ' + (e.name === 'AbortError' ? 'no answer within 30 seconds' : e.message) + '. Press Refresh. Changes stay paused until the data loads.', true);
+        setSyncStatus('Load error: ' + e.message + '. Press Refresh. Changes stay paused until the data loads.', true);
         return false;
       }
       await new Promise(function(r){ setTimeout(r, 1500); });   // one quiet retry
@@ -320,19 +361,13 @@ async function loadIssues(){
 async function serverOp(action, payload){
   opsRunning++;
   setSyncStatus('Saving...');
-  const ctl = new AbortController();
-  const timer = setTimeout(function(){ ctl.abort(); }, 30000);
   try{
-    let text;
-    try{
-      const res = await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(Object.assign({ action: action }, payload)),
-        signal: ctl.signal
-      });
-      text = await res.text();
-    } finally { clearTimeout(timer); }
+    const res = await fetchWithTimeout_(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({ action: action }, payload))
+    }, 30000);
+    const text = await res.text();
     let j;
     try{ j = JSON.parse(text); }
     catch(e){ const err = new Error('The server did not answer clearly.'); err.unclear = true; throw err; }
@@ -342,7 +377,7 @@ async function serverOp(action, payload){
     return j;
   }catch(e){
     let err = e;
-    if(e && e.name === 'AbortError'){ err = new Error('No answer within 30 seconds.'); err.unclear = true; }
+    if(e && e.isTimeout){ err.unclear = true; }
     else if(e instanceof TypeError){ err = new Error('No connection to the server.'); err.unclear = true; }
     setSyncStatus('Save error: ' + err.message, true);
     throw err;
@@ -421,16 +456,11 @@ let handoverBusy = false;
 
 // Opens a ticket in the Ticket Handover tracker for this issue and remembers the link on the issue.
 async function callHandover(fields){
-  const ctl = new AbortController();
-  const timer = setTimeout(function(){ ctl.abort(); }, 75000);
-  let text;
-  try{
-    const res = await fetch(HANDOVER_URL, {
-      method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, signal: ctl.signal,
-      body: JSON.stringify(Object.assign({ action: 'create', email: currentUserEmail, password: SHARED_PASSWORD }, fields))
-    });
-    text = await res.text();
-  } finally { clearTimeout(timer); }
+  const res = await fetchWithTimeout_(HANDOVER_URL, {
+    method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(Object.assign({ action: 'create', email: currentUserEmail, password: SHARED_PASSWORD }, fields))
+  }, 75000);
+  const text = await res.text();
   try{ return JSON.parse(text); }catch(e){ throw new Error('The Handover tracker did not answer clearly.'); }
 }
 
@@ -481,7 +511,7 @@ async function sendIssueToHandover(issue, toEmail, note){
       : 'Confirmed: Handover ticket ' + j.data.id + ' is with ' + holderName + '.' + (holderName !== person.name ? ' (This issue already had a ticket, so no second one was created.)' : ''), 9000);
     return true;
   }catch(e){
-    const msg = e.name === 'AbortError' ? 'No answer from the Handover tracker within 75 seconds.' : e.message;
+    const msg = e.message;
     setSyncStatus('Handover ticket not confirmed: ' + msg, true);
     showToast('The issue is saved, but the Handover ticket was not confirmed: ' + msg + ' Use "Send to Handover" on its row to try again. It will not create a duplicate.', 12000);
     return false;
@@ -497,14 +527,9 @@ async function loadHandoverLinks(){
   if(handoverLinksLoading || Date.now() - handoverLinksAt < 60000) return;
   handoverLinksLoading = true;
   try{
-    const ctl = new AbortController();
-    const timer = setTimeout(function(){ ctl.abort(); }, 30000);
-    let text;
-    try{
-      const res = await fetch(HANDOVER_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, signal: ctl.signal,
-        body: JSON.stringify({ action: 'retailLinks', password: SHARED_PASSWORD }) });
-      text = await res.text();
-    } finally { clearTimeout(timer); }
+    const res = await fetchWithTimeout_(HANDOVER_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'retailLinks', password: SHARED_PASSWORD }) }, 30000);
+    const text = await res.text();
     const j = JSON.parse(text);
     if(j.ok && j.data && Array.isArray(j.data.links)){
       const map = {};
