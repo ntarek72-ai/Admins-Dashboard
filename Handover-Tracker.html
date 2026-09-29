@@ -650,6 +650,7 @@ function detailHTML(t){
       '<h3>Ticket</h3><dl class="kv">' +
         '<dt>Order</dt><dd>' + esc(t.orderNumber) + '</dd>' +
         '<dt>Order type</dt><dd>' + esc(t.orderType || 'Not set') + '</dd>' +
+        (t.attachmentUrl ? '<dt>Attachment</dt><dd><a href="' + esc(t.attachmentUrl) + '" target="_blank" rel="noopener">\uD83D\uDCCE ' + esc(t.attachmentName || 'View attachment') + '</a></dd>' : '') +
         '<dt>Company</dt><dd>' + esc(t.company || '-') + '</dd>' +
         '<dt>Pharmacy</dt><dd>' + esc(t.pharmacy || '-') + '</dd>' +
         '<dt>Cycle</dt><dd>' + esc(t.cycle || '-') + '</dd>' +
@@ -711,6 +712,16 @@ function others(){
     .sort(function(a,b){ return a.label.localeCompare(b.label); });
 }
 
+const ATTACHMENT_MAX_BYTES = 8 * 1024 * 1024;
+function readFileAsBase64_(file){
+  return new Promise(function(resolve, reject){
+    const reader = new FileReader();
+    reader.onload = function(){ resolve(String(reader.result).split(',')[1] || ''); };
+    reader.onerror = function(){ reject(new Error('Could not read the file.')); };
+    reader.readAsDataURL(file);
+  });
+}
+
 function newTicketDialog(){
   const now = new Date(), cur = MONTHS[now.getMonth()] + ' ' + now.getFullYear(), cycles = [];
   for(let y = 2026; y <= 2027; y++) MONTHS.forEach(function(m){ cycles.push(m + ' ' + y); });
@@ -726,7 +737,11 @@ function newTicketDialog(){
       { name:'issue', label:'What is the problem?', type:'textarea', required:true },
       { name:'to', label:'Hand to', type:'select', options:others(), required:true, placeholder:'Choose person' }
     ],
-    after:'<div class="field" style="border-top:1px solid var(--line);padding-top:14px;margin-top:4px">' +
+    after:'<div class="field">' +
+      '<label class="f">Attach a photo or PDF (optional)</label>' +
+      '<input type="file" id="attachmentInput" accept="image/*,application/pdf" style="width:100%">' +
+      '<div id="attachmentInfo" style="font-size:12px;color:var(--muted);margin-top:4px"></div></div>' +
+      '<div class="field" style="border-top:1px solid var(--line);padding-top:14px;margin-top:4px">' +
       '<label style="display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer">' +
       '<input type="checkbox" id="alsoRetailChk"> Also send to Retail Tracker now</label>' +
       '<p style="margin:4px 0 0;color:var(--muted);font-size:13px">Opens an issue for Mohamed Sayed right away, assigned to him. Use this when the details are already clear.</p>' +
@@ -745,6 +760,18 @@ function newTicketDialog(){
         if(hit){ box.textContent = 'This order already has a ticket (' + hit.status + ', ' + fmtWhen(hit.createdAt) + '). Consider resending or reopening it instead of opening a new one.'; box.classList.remove('hidden'); }
         else box.classList.add('hidden');
       });
+      const fileInput = document.getElementById('attachmentInput'), fileInfo = document.getElementById('attachmentInfo');
+      fileInput.addEventListener('change', function(){
+        const f = fileInput.files && fileInput.files[0];
+        if(!f){ fileInfo.textContent = ''; return; }
+        if(f.size > ATTACHMENT_MAX_BYTES){
+          fileInfo.textContent = 'Too large (max 8 MB). Choose a smaller file.'; fileInfo.style.color = 'var(--danger)';
+          fileInput.value = '';
+          return;
+        }
+        fileInfo.style.color = 'var(--muted)';
+        fileInfo.textContent = f.name + ' (' + (f.size / 1024 / 1024).toFixed(1) + ' MB)';
+      });
       const chk = document.getElementById('alsoRetailChk'), wrap = document.getElementById('retailCommentWrap'), rc = document.getElementById('retailCommentInput');
       chk.addEventListener('change', function(){
         wrap.classList.toggle('hidden', !chk.checked);
@@ -753,6 +780,13 @@ function newTicketDialog(){
       });
     },
     run:async function(v){
+      const fileInput = document.getElementById('attachmentInput');
+      const file = fileInput && fileInput.files && fileInput.files[0];
+      if(file){
+        v.attachmentName = file.name;
+        v.attachmentMimeType = file.type || 'application/octet-stream';
+        v.attachmentData = await readFileAsBase64_(file);
+      }
       const chk = document.getElementById('alsoRetailChk');
       if(chk && chk.checked){
         v.alsoRetail = true;
@@ -861,13 +895,13 @@ function plainEvent(e){
 }
 function exportCSV(){
   const head = ['Ticket ID','Order number','Order type','Company','Pharmacy','Cycle','Issue','Status','Currently with','Opened by','Opened at','Last update',
-                'New order number','Resolution note','Retail Issue Tracker','Resolved by','Resolved at','Times handed over','Days open or to resolve','History'];
+                'New order number','Resolution note','Attachment','Retail Issue Tracker','Resolved by','Resolved at','Times handed over','Days open or to resolve','History'];
   const rows = S.tickets.slice().sort(function(a,b){ return a.createdAt < b.createdAt ? -1 : 1; }).map(function(t){
     const end = t.status === 'Resolved' && t.resolvedAt ? new Date(t.resolvedAt) : new Date();
     const days = Math.max(0, Math.floor((end - new Date(t.createdAt)) / 86400000));
     return [t.id, t.orderNumber, t.orderType || '', t.company, t.pharmacy, t.cycle, t.issue, t.status,
             t.status === 'Resolved' ? '' : nameOf(t.holder), nameOf(t.createdBy), stamp(t.createdAt), stamp(t.updatedAt),
-            t.newOrderNumber, t.resolutionNote, t.retailIssueId ? (t.retailStatus === 'Resolved' ? 'Closed on both' : (t.retailStatus === 'Answered' ? 'Sayed resolved it' : 'Open there')) : '', t.resolvedBy ? nameOf(t.resolvedBy) : '', stamp(t.resolvedAt),
+            t.newOrderNumber, t.resolutionNote, t.attachmentUrl || '', t.retailIssueId ? (t.retailStatus === 'Resolved' ? 'Closed on both' : (t.retailStatus === 'Answered' ? 'Sayed resolved it' : 'Open there')) : '', t.resolvedBy ? nameOf(t.resolvedBy) : '', stamp(t.resolvedAt),
             t._hops.length, days, t._events.map(function(e){ return stamp(e.at) + ' ' + plainEvent(e); }).join(' | ')];
   });
   const csv = '\uFEFF' + [head].concat(rows).map(function(r){ return r.map(csvCell).join(','); }).join('\r\n');

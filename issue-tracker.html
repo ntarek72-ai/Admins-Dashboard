@@ -568,6 +568,11 @@ function handoverCell(i){
   return '<br><button class="resolve-btn" style="margin-top:4px;background:var(--card);color:var(--ink);border:1px solid var(--line);" onclick="openHandoverDialog(' + i.id + ')">Send to Handover</button>';
 }
 
+function attachmentCell(i){
+  if(!i.attachmentUrl) return '';
+  return '<br><a href="' + escHtml(i.attachmentUrl) + '" target="_blank" rel="noopener" style="font-size:11.5px;color:var(--accent,#2E6F63);text-decoration:none;">\uD83D\uDCCE ' + escHtml(i.attachmentName || 'View attachment') + '</a>';
+}
+
 function closeHandoverDialog(){
   const box = document.getElementById('hoModal');
   if(box){ box.style.display = 'none'; box.innerHTML = ''; }
@@ -826,7 +831,7 @@ function render(){
         '<td>' + i.oldOrderNumber + '</td>' +
         '<td>' + (i.pharmacy || '\u2014') + '</td>' +
         '<td>' + (i.company || '\u2014') + '</td>' +
-        '<td style="max-width:220px;">' + (i.comment || '\u2014') + '</td>' +
+        '<td style="max-width:220px;">' + (i.comment || '\u2014') + attachmentCell(i) + '</td>' +
         '<td style="white-space:nowrap;">' + (i.dateOpened || '\u2014') + '</td>' +
         '<td>' + openDurationHtml(i) + '</td>' +
         '<td>' + (i.assignedTo || '\u2014') + '</td>' +
@@ -934,10 +939,10 @@ function exportCSV(){
     alert('No issues to export.');
     return;
   }
-  const header = ['Cycle','Submitted By','Old Order Number','Pharmacy','Company','Comment','Date Opened','Assigned To','New Order Number','Resolution Comment','Date Resolved','Status'];
+  const header = ['Cycle','Submitted By','Old Order Number','Pharmacy','Company','Comment','Date Opened','Assigned To','New Order Number','Resolution Comment','Date Resolved','Status','Attachment'];
   let csv = header.map(csvEscape).join(',') + '\n';
   list.forEach(function(i){
-    csv += [i.cycle, i.submittedBy, i.oldOrderNumber, i.pharmacy, i.company, i.comment, i.dateOpened, i.assignedTo, i.newOrderNumber, i.resolutionComment, i.dateResolved, i.status].map(csvEscape).join(',') + '\n';
+    csv += [i.cycle, i.submittedBy, i.oldOrderNumber, i.pharmacy, i.company, i.comment, i.dateOpened, i.assignedTo, i.newOrderNumber, i.resolutionComment, i.dateResolved, i.status, i.attachmentUrl || ''].map(csvEscape).join(',') + '\n';
   });
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
