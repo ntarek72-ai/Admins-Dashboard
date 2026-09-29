@@ -684,7 +684,7 @@ function ask(cfg){
   const dlg = $('#dlg');
   dlg.innerHTML = '<form class="dlg-body" novalidate>' +
     '<h2>' + esc(cfg.title) + '</h2><p class="intro">' + esc(cfg.intro || '') + '</p>' +
-    (cfg.before || '') + cfg.fields.map(fieldHTML).join('') +
+    (cfg.before || '') + cfg.fields.map(fieldHTML).join('') + (cfg.after || '') +
     '<p class="err" role="alert"></p>' +
     '<div class="dlg-foot"><button class="btn" type="button" data-close>Cancel</button>' +
     '<button class="btn ' + (cfg.danger ? 'danger' : 'primary') + '" type="submit">' + esc(cfg.confirm) + '</button></div></form>';
@@ -726,6 +726,13 @@ function newTicketDialog(){
       { name:'issue', label:'What is the problem?', type:'textarea', required:true },
       { name:'to', label:'Hand to', type:'select', options:others(), required:true, placeholder:'Choose person' }
     ],
+    after:'<div class="field" style="border-top:1px solid var(--line);padding-top:14px;margin-top:4px">' +
+      '<label style="display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer">' +
+      '<input type="checkbox" id="alsoRetailChk"> Also send to Retail Tracker now</label>' +
+      '<p style="margin:4px 0 0;color:var(--muted);font-size:13px">Opens an issue for Mohamed Sayed right away, assigned to him. Use this when the details are already clear.</p>' +
+      '<div id="retailCommentWrap" class="hidden" style="margin-top:10px">' +
+      '<label class="f">Comment for Mohamed Sayed</label>' +
+      '<textarea class="in" id="retailCommentInput" dir="auto"></textarea></div></div>',
     onOpen:function(form){
       let typeTouched = false;
       form.orderType.addEventListener('change', function(){ typeTouched = true; });
@@ -738,8 +745,24 @@ function newTicketDialog(){
         if(hit){ box.textContent = 'This order already has a ticket (' + hit.status + ', ' + fmtWhen(hit.createdAt) + '). Consider resending or reopening it instead of opening a new one.'; box.classList.remove('hidden'); }
         else box.classList.add('hidden');
       });
+      const chk = document.getElementById('alsoRetailChk'), wrap = document.getElementById('retailCommentWrap'), rc = document.getElementById('retailCommentInput');
+      chk.addEventListener('change', function(){
+        wrap.classList.toggle('hidden', !chk.checked);
+        if(chk.checked && !rc.value) rc.value = form.issue.value;
+        if(chk.checked) rc.focus();
+      });
     },
-    run:async function(v){ const d = await api('create', v); toast('Ticket sent to ' + nameOf(v.to)); S.tab = 'waiting'; applyPatch(d); }
+    run:async function(v){
+      const chk = document.getElementById('alsoRetailChk');
+      if(chk && chk.checked){
+        v.alsoRetail = true;
+        v.retailComment = document.getElementById('retailCommentInput').value.trim();
+        if(!v.retailComment) throw new Error('Write a comment for Mohamed Sayed.');
+      }
+      const d = await api('create', v);
+      toast(chk && chk.checked ? 'Ticket sent to ' + nameOf(v.to) + ' and created in the Retail Issue Tracker.' : 'Ticket sent to ' + nameOf(v.to));
+      S.tab = 'waiting'; applyPatch(d);
+    }
   });
 }
 
