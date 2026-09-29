@@ -259,6 +259,11 @@ function load(k){ try{ return JSON.parse(localStorage.getItem(k)); }catch(e){ re
 
 /* ===================== API ===================== */
 function fetchWithTimeout_(url, opts, ms){
+  // Apps Script answers through a redirect to script.googleusercontent.com with a one-time key.
+  // Browsers can cache that redirect; replaying a cached, now-expired key gets a 404 with no real
+  // response. A changing URL plus cache:'no-store' stops the browser from ever reusing it.
+  const bust = url + (url.indexOf('?') === -1 ? '?' : '&') + '_=' + Date.now() + Math.random().toString(36).slice(2);
+  const fullOpts = Object.assign({ cache: 'no-store' }, opts || {});
   return new Promise(function(resolve, reject){
     let settled = false;
     const timer = setTimeout(function(){
@@ -266,7 +271,7 @@ function fetchWithTimeout_(url, opts, ms){
       const e = new Error('No answer within ' + Math.round(ms/1000) + ' seconds.'); e.isTimeout = true;
       reject(e);
     }, ms);
-    fetch(url, opts).then(function(res){ if(settled) return; settled = true; clearTimeout(timer); resolve(res); },
+    fetch(bust, fullOpts).then(function(res){ if(settled) return; settled = true; clearTimeout(timer); resolve(res); },
       function(err){ if(settled) return; settled = true; clearTimeout(timer); reject(err); });
   });
 }
@@ -683,25 +688,35 @@ function fieldHTML(f){
   return '<div class="field"><label class="f">' + esc(f.label) + '</label>' + ctl + '</div>';
 }
 
+let dialogBusy = false;
 function ask(cfg){
+  if(dialogBusy){ toast('Please wait for the current action to finish.'); return; }
   const dlg = $('#dlg');
+  if(!dlg._escGuarded){ dlg.addEventListener('cancel', function(e){ if(dialogBusy) e.preventDefault(); }); dlg._escGuarded = true; }
   dlg.innerHTML = '<form class="dlg-body" novalidate>' +
     '<h2>' + esc(cfg.title) + '</h2><p class="intro">' + esc(cfg.intro || '') + '</p>' +
     (cfg.before || '') + cfg.fields.map(fieldHTML).join('') + (cfg.after || '') +
     '<p class="err" role="alert"></p>' +
     '<div class="dlg-foot"><button class="btn" type="button" data-close>Cancel</button>' +
     '<button class="btn ' + (cfg.danger ? 'danger' : 'primary') + '" type="submit">' + esc(cfg.confirm) + '</button></div></form>';
-  const form = dlg.querySelector('form'), err = dlg.querySelector('.err'), submit = form.querySelector('[type=submit]');
-  form.querySelector('[data-close]').onclick = function(){ dlg.close(); };
+  const form = dlg.querySelector('form'), err = dlg.querySelector('.err'), submit = form.querySelector('[type=submit]'), closeBtn = form.querySelector('[data-close]');
+  closeBtn.onclick = function(){ dlg.close(); };
   if(cfg.onOpen) cfg.onOpen(form);
   form.onsubmit = async function(ev){
     ev.preventDefault(); err.textContent = '';
     const vals = {}; new FormData(form).forEach(function(v,k){ vals[k] = String(v).trim(); });
     for(const f of cfg.fields){ if(f.required && !vals[f.name]){ err.textContent = f.label + ' is required.'; return; } }
-    submit.disabled = true; const old = submit.textContent; submit.textContent = cfg.savingLabel || 'Saving…';
+    submit.disabled = true; closeBtn.disabled = true; dialogBusy = true; const old = submit.textContent; submit.textContent = cfg.savingLabel || 'Saving…';
     if(cfg.busyNote){ err.style.color = 'var(--muted)'; err.textContent = cfg.busyNote; }
-    try{ await cfg.run(vals); dlg.close(); }
-    catch(e){ err.style.color = ''; if(e.code === 'AUTH'){ dlg.close(); signOut(); return; } if(e.code === 'HTML' && cfg.unclearMessage){ err.textContent = cfg.unclearMessage; submit.disabled = false; submit.textContent = old; return; } if(e.code === 'HTML'){ dlg.close(); toast('No clear answer from the server. Checking what was saved...'); await loadAll(true); return; } err.textContent = e.message; submit.disabled = false; submit.textContent = old; }
+    try{ await cfg.run(vals); dialogBusy = false; dlg.close(); }
+    catch(e){
+      dialogBusy = false;
+      err.style.color = '';
+      if(e.code === 'AUTH'){ dlg.close(); signOut(); return; }
+      if(e.code === 'HTML' && cfg.unclearMessage){ err.textContent = cfg.unclearMessage; submit.disabled = false; closeBtn.disabled = false; submit.textContent = old; return; }
+      if(e.code === 'HTML'){ dlg.close(); toast('No clear answer from the server. Checking what was saved...'); await loadAll(true); return; }
+      err.textContent = e.message; submit.disabled = false; closeBtn.disabled = false; submit.textContent = old;
+    }
   };
   dlg.showModal();
   const first = form.querySelector('input,select,textarea'); if(first) first.focus();

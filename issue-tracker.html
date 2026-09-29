@@ -318,6 +318,11 @@ function needFresh(){
 }
 
 function fetchWithTimeout_(url, opts, ms){
+  // Apps Script answers through a redirect to script.googleusercontent.com with a one-time key.
+  // Browsers can cache that redirect; replaying a cached, now-expired key gets a 404 with no real
+  // response. A changing URL plus cache:'no-store' stops the browser from ever reusing it.
+  const bust = url + (url.indexOf('?') === -1 ? '?' : '&') + '_=' + Date.now() + Math.random().toString(36).slice(2);
+  const fullOpts = Object.assign({ cache: 'no-store' }, opts || {});
   return new Promise(function(resolve, reject){
     let settled = false;
     const timer = setTimeout(function(){
@@ -325,7 +330,7 @@ function fetchWithTimeout_(url, opts, ms){
       const e = new Error('No answer within ' + Math.round(ms/1000) + ' seconds.'); e.isTimeout = true;
       reject(e);
     }, ms);
-    fetch(url, opts).then(function(res){ if(settled) return; settled = true; clearTimeout(timer); resolve(res); },
+    fetch(bust, fullOpts).then(function(res){ if(settled) return; settled = true; clearTimeout(timer); resolve(res); },
       function(err){ if(settled) return; settled = true; clearTimeout(timer); reject(err); });
   });
 }
@@ -417,18 +422,6 @@ async function onNotifyToggle(){
   }
 }
 
-async function notify(action, payload){
-  if(!notifyEnabled) return;
-  try{
-    await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(Object.assign({ action: action }, payload))
-    });
-  }catch(e){
-    console.error('Notify failed', e);
-  }
-}
 
 async function importHistorical(){
   if(!isAdmin()) return;
