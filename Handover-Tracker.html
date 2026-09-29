@@ -209,7 +209,7 @@
 const CONFIG = {
   APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzCAUSslFSoeE2RqO2zfBqpZbiNSBTWEk_iHUxrQckegSbYfnT7CkIREShR-LY9cVSW/exec',
   REMIND_HOURS: 4,        // Sent tickets older than this are highlighted
-  REFRESH_MS: 120000,
+  REFRESH_MS: 60000,
   PHARMACIES: ["El Hadaba","Marwa","Moslmany","Mohamed Salam","Farghal","ENGY","Mo Wagih","Omranya"],
   COMPANIES: ["Administrative control Authority (ACA)","Ahly Medical","Anabib El Petrol","AXA Services Egypt","Bupa","Cinema","Cinnabon","City Stars","EGAS","Egyptian Customs Authority","El Ganzory Hospital","El Mashreq","EMC","Estsharion","GASCO","GlobeMed","HyperOne","Limitless Care","Mednet","Medright","MedRight TPA","Medsure","MetLife","MISR HEALTH CARE","Napp","Next Care","Omega Care","Petrojet","Sainco","Seha One","Tawoon","Wadi El Neel","Other"]
 };
@@ -310,8 +310,8 @@ async function api(action, payload){
   try{
     try{ return await apiOnce(action, payload); }
     catch(e){
-      // A read can safely be retried once if Google briefly answers with a web page.
-      if(!write && !e.timeout && (e.code === 'HTML' || e instanceof TypeError)){ await new Promise(function(r){ setTimeout(r, 1500); }); return await apiOnce(action, payload); }
+      // A read can safely be retried once, whatever the failure looked like.
+      if(!write){ await new Promise(function(r){ setTimeout(r, 1500); }); return await apiOnce(action, payload); }
       throw e;
     }
   } finally { if(write) S.busy--; }
@@ -714,7 +714,17 @@ function ask(cfg){
       err.style.color = '';
       if(e.code === 'AUTH'){ dlg.close(); signOut(); return; }
       if(e.code === 'HTML' && cfg.unclearMessage){ err.textContent = cfg.unclearMessage; submit.disabled = false; closeBtn.disabled = false; submit.textContent = old; return; }
-      if(e.code === 'HTML'){ dlg.close(); toast('No clear answer from the server. Checking what was saved...'); await loadAll(true); return; }
+      if(e.code === 'HTML'){
+        dlg.close();
+        toast('No clear answer from the server. Checking what was saved...');
+        const before = S.lastOk;
+        await loadAll(true);
+        if(S.lastOk === before){                     // the quiet refresh did not actually succeed
+          await new Promise(function(r){ setTimeout(r, 2000); });
+          await loadAll(false);                       // visible this time, so a repeated failure is not silent
+        }
+        return;
+      }
       err.textContent = e.message; submit.disabled = false; closeBtn.disabled = false; submit.textContent = old;
     }
   };
@@ -959,7 +969,20 @@ $('#list').addEventListener('click', async function(e){
     if(kind === 'receive'){
       act.disabled = true; act.textContent = 'Saving…';
       try{ const d = await api('receive', { id:id }); toast('Receipt confirmed'); S.tab = 'mine'; applyPatch(d); }
-      catch(err){ if(err.code === 'AUTH'){ signOut(); return; } if(err.code === 'HTML'){ toast('No clear answer from the server. Checking what was saved...'); await loadAll(true); return; } toast(err.message); act.disabled = false; act.textContent = 'Confirm receipt'; }
+      catch(err){
+        if(err.code === 'AUTH'){ signOut(); return; }
+        if(err.code === 'HTML'){
+          toast('No clear answer from the server. Checking what was saved...');
+          const before = S.lastOk;
+          await loadAll(true);
+          if(S.lastOk === before){
+            await new Promise(function(r){ setTimeout(r, 2000); });
+            await loadAll(false);
+          }
+          return;
+        }
+        toast(err.message); act.disabled = false; act.textContent = 'Confirm receipt';
+      }
     } else actionDialog(kind, id);
     return;
   }
