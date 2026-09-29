@@ -274,7 +274,9 @@ function fetchWithTimeout_(url, opts, ms){
 async function apiOnce(action, payload){
   if(CONFIG.APPS_SCRIPT_URL.indexOf('PASTE') === 0) throw new Error('Set APPS_SCRIPT_URL at the top of this file first.');
   const body = Object.assign({ action:action, email:S.cred.email, password:S.cred.pw }, payload || {});
-  const limit = (action === 'sendToRetail') ? 75000 : 30000;
+  // Anything that may talk to the Retail Issue Tracker or upload a file over the network gets more time.
+  const slow = action === 'sendToRetail' || (action === 'create' && payload && (payload.alsoRetail || payload.attachmentData));
+  const limit = slow ? 75000 : 30000;
   let res, raw;
   const t0 = Date.now();
   try{
