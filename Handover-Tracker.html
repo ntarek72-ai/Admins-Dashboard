@@ -195,6 +195,8 @@
       <select class="in" id="fPharmacy" aria-label="Filter by pharmacy"></select>
       <select class="in" id="fHolder" aria-label="Filter by who holds the ticket"></select>
       <select class="in" id="fType" aria-label="Filter by order type"></select>
+      <input class="in" id="fDate" type="date" aria-label="Filter by date opened" title="Opened on this date">
+      <button class="btn quiet" id="fDateClear" type="button" style="display:none">Clear date</button>
     </div>
 
     <main id="list" aria-live="polite"></main>
@@ -233,7 +235,7 @@ const CRED_KEY = 'ticket-handover-cred';
 const SNAP_KEY = 'ticket-handover-snapshot-';
 
 /* ===================== STATE ===================== */
-const S = { otype:'', usage:null, loading:false, lastOk:'', preview:false, busy:0, notify:false, cred:null, me:null, users:[], tickets:[], events:[], tab:'inbox', q:'', company:'', pharmacy:'', holder:'', open:null, timer:null };
+const S = { date:'', otype:'', usage:null, loading:false, lastOk:'', preview:false, busy:0, notify:false, cred:null, me:null, users:[], tickets:[], events:[], tab:'inbox', q:'', company:'', pharmacy:'', holder:'', open:null, timer:null };
 const $ = function(s){ return document.querySelector(s); };
 
 /* ===================== HELPERS ===================== */
@@ -464,18 +466,32 @@ const TABS = [
 ];
 
 function fillFilters(){
-  const cs = {}, ps = {};
-  S.tickets.forEach(function(t){ if(t.company) cs[t.company] = 1; if(t.pharmacy) ps[t.pharmacy] = 1; });
+  const cs = {}, ps = {}, hs = {}, os = {};
+  S.tickets.forEach(function(t){
+    if(t.company) cs[t.company] = (cs[t.company] || 0) + 1;
+    if(t.pharmacy) ps[t.pharmacy] = (ps[t.pharmacy] || 0) + 1;
+    if(t.holder) hs[t.holder] = (hs[t.holder] || 0) + 1;
+    const k = t.orderType || '__none'; os[k] = (os[k] || 0) + 1;
+  });
   const opts = function(all, label, cur){
     return '<option value="">' + label + '</option>' + Object.keys(all).sort().map(function(k){
-      return '<option' + (k === cur ? ' selected' : '') + ' value="' + esc(k) + '">' + esc(k) + '</option>'; }).join('');
+      return '<option' + (k === cur ? ' selected' : '') + ' value="' + esc(k) + '">' + esc(k) + ' (' + all[k] + ')</option>'; }).join('');
   };
   $('#fCompany').innerHTML = opts(cs, 'All companies', S.company);
   $('#fPharmacy').innerHTML = opts(ps, 'All pharmacies', S.pharmacy);
-  $('#fType').innerHTML = '<option value="">All order types</option>' + ORDER_TYPES.concat(['']).map(function(v){ return '<option value="' + (v || '__none') + '"' + ((v || '__none') === S.otype ? ' selected' : '') + '>' + (v || 'Type not set') + '</option>'; }).join('');
+  $('#fType').innerHTML = '<option value="">All order types</option>' + ORDER_TYPES.concat(['']).map(function(v){
+    const k = v || '__none';
+    return '<option value="' + k + '"' + (k === S.otype ? ' selected' : '') + '>' + (v || 'Type not set') + ' (' + (os[k] || 0) + ')</option>'; }).join('');
   $('#fHolder').innerHTML = '<option value="">Anyone holding</option>' + S.users.filter(function(u){ return !u.viewer; })
     .sort(function(a,b){ return a.name.localeCompare(b.name); }).map(function(u){
-    return '<option value="' + esc(u.email) + '"' + (u.email === S.holder ? ' selected' : '') + '>' + esc(u.name) + '</option>'; }).join('');
+    return '<option value="' + esc(u.email) + '"' + (u.email === S.holder ? ' selected' : '') + '>' + esc(u.name) + ' (' + (hs[u.email] || 0) + ')</option>'; }).join('');
+  updateDateClear();
+}
+
+function localDateStr(iso){
+  if(!iso) return '';
+  const d = new Date(iso), p = function(n){ return String(n).padStart(2,'0'); };
+  return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate());
 }
 
 function passesFilters(t){
@@ -483,6 +499,7 @@ function passesFilters(t){
   if(S.pharmacy && t.pharmacy !== S.pharmacy) return false;
   if(S.holder && t.holder !== S.holder) return false;
   if(S.otype && (t.orderType || '__none') !== S.otype) return false;
+  if(S.date && localDateStr(t.createdAt) !== S.date) return false;
   if(S.q){
     const hay = [t.orderNumber, t.orderType, t.company, t.pharmacy, t.issue, t.newOrderNumber, t.id].join(' ').toLowerCase();
     if(hay.indexOf(S.q.toLowerCase()) === -1) return false;
@@ -517,7 +534,7 @@ function render(){
   rows.sort(function(a,b){ return tb.id === 'inbox' ? (a.updatedAt < b.updatedAt ? -1 : 1) : (a.updatedAt < b.updatedAt ? 1 : -1); });
 
   if(!rows.length){
-    const filtered = S.q || S.company || S.pharmacy || S.holder || S.otype;
+    const filtered = S.q || S.company || S.pharmacy || S.holder || S.otype || S.date;
     $('#list').innerHTML = '<div class="empty"><b>' + esc(filtered ? 'No tickets match these filters' : tb.empty[0]) + '</b>' +
       esc(filtered ? 'Clear the search or filters to see more.' : tb.empty[1]) + '</div>';
     return;
@@ -716,7 +733,7 @@ function ask(cfg){
       if(e.code === 'HTML' && cfg.unclearMessage){ err.textContent = cfg.unclearMessage; submit.disabled = false; closeBtn.disabled = false; submit.textContent = old; return; }
       if(e.code === 'HTML'){
         dlg.close();
-        toast('No clear answer from the server. Checking what was saved...');
+        toast('Not sure the server confirmed this. Checking now, this can take up to a minute — the list will update on its own, and nothing you did will be lost or reversed.', 9000);
         const before = S.lastOk;
         await loadAll(true);
         if(S.lastOk === before){                     // the quiet refresh did not actually succeed
@@ -962,6 +979,16 @@ $('#fCompany').addEventListener('change', function(e){ S.company = e.target.valu
 $('#fPharmacy').addEventListener('change', function(e){ S.pharmacy = e.target.value; render(); });
 $('#fHolder').addEventListener('change', function(e){ S.holder = e.target.value; render(); });
 $('#fType').addEventListener('change', function(e){ S.otype = e.target.value; render(); });
+$('#fDate').addEventListener('change', function(e){ S.date = e.target.value; updateDateClear(); render(); });
+$('#fDateClear').addEventListener('click', function(){ S.date = ''; $('#fDate').value = ''; $('#fDateClear').style.display = 'none'; render(); });
+
+function updateDateClear(){
+  const btn = $('#fDateClear');
+  if(!S.date){ btn.style.display = 'none'; return; }
+  const n = S.tickets.filter(function(t){ return localDateStr(t.createdAt) === S.date; }).length;
+  btn.textContent = 'Clear date (' + n + ')';
+  btn.style.display = '';
+}
 $('#list').addEventListener('click', async function(e){
   const act = e.target.closest('[data-act]');
   if(act){
@@ -972,7 +999,7 @@ $('#list').addEventListener('click', async function(e){
       catch(err){
         if(err.code === 'AUTH'){ signOut(); return; }
         if(err.code === 'HTML'){
-          toast('No clear answer from the server. Checking what was saved...');
+          toast('Not sure the server confirmed this. Checking now, this can take up to a minute — the list will update on its own, and nothing you did will be lost or reversed.', 9000);
           const before = S.lastOk;
           await loadAll(true);
           if(S.lastOk === before){
