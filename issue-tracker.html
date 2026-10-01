@@ -711,6 +711,11 @@ function uniqueValues(field){
   return Array.from(set).sort();
 }
 
+function countBy(field, value){
+  if(field === 'status') return issues.filter(function(i){ return (i.status || 'Open') === value; }).length;
+  return issues.filter(function(i){ return i[field] === value; }).length;
+}
+
 function populateFilterOptions(){
   const bar = document.getElementById('filterBar');
   const ids = ['f_status','f_cycle','f_pharmacy','f_company','f_assignedTo','f_submittedBy'];
@@ -719,6 +724,7 @@ function populateFilterOptions(){
     const el = document.getElementById(id);
     if(el) previousValues[id] = el.value;
   });
+  const previousDate = (document.getElementById('f_date') || {}).value || '';
 
   const filters = [
     { id: 'f_status', label: 'Status', options: ['Open', 'Resolved'] },
@@ -729,17 +735,33 @@ function populateFilterOptions(){
     { id: 'f_submittedBy', label: 'Submitted By', options: uniqueValues('submittedBy') },
   ];
   bar.innerHTML = filters.map(function(f){
+    const field = f.id.slice(2);
     return '<div class="fgroup"><label>' + f.label + '</label><select id="' + f.id + '"><option value="">All</option>' +
-      f.options.map(function(o){ return '<option>' + o + '</option>'; }).join('') + '</select></div>';
-  }).join('') + '<button class="clear" onclick="clearFilters()">Clear filters</button>';
+      f.options.map(function(o){ return '<option value="' + escHtml(o) + '">' + escHtml(o) + ' (' + countBy(field, o) + ')</option>'; }).join('') + '</select></div>';
+  }).join('') +
+    '<div class="fgroup"><label>Date Opened</label><input type="date" id="f_date"><button class="clear" id="f_dateClear" type="button" style="display:none;margin-top:4px;">Clear date</button></div>' +
+    '<button class="clear" onclick="clearFilters()">Clear filters</button>';
 
   filters.forEach(function(f){
     const el = document.getElementById(f.id);
-    if(previousValues[f.id] && f.options.indexOf(previousValues[f.id]) !== -1){
-      el.value = previousValues[f.id];
-    }
+    if(previousValues[f.id] && f.options.indexOf(previousValues[f.id]) !== -1) el.value = previousValues[f.id];
     el.addEventListener('change', render);
   });
+
+  const dateEl = document.getElementById('f_date');
+  dateEl.value = previousDate;
+  dateEl.addEventListener('change', function(){ updateDateClear(); render(); });
+  document.getElementById('f_dateClear').addEventListener('click', function(){ dateEl.value = ''; updateDateClear(); render(); });
+  updateDateClear();
+}
+
+function updateDateClear(){
+  const dateEl = document.getElementById('f_date'), btn = document.getElementById('f_dateClear');
+  if(!dateEl || !btn) return;
+  if(!dateEl.value){ btn.style.display = 'none'; return; }
+  const n = issues.filter(function(i){ return String(i.dateOpened || '').slice(0, 10) === dateEl.value; }).length;
+  btn.textContent = 'Clear date (' + n + ')';
+  btn.style.display = '';
 }
 
 function clearFilters(){
@@ -747,6 +769,9 @@ function clearFilters(){
     const el = document.getElementById(id);
     if(el) el.value = '';
   });
+  const dateEl = document.getElementById('f_date');
+  if(dateEl) dateEl.value = '';
+  updateDateClear();
   render();
 }
 
@@ -773,6 +798,8 @@ function render(){
   Object.keys(filters).forEach(function(key){
     list = list.filter(function(i){ return i[key] === filters[key]; });
   });
+  const dateVal = (document.getElementById('f_date') || {}).value;
+  if(dateVal) list = list.filter(function(i){ return String(i.dateOpened || '').slice(0, 10) === dateVal; });
 
   const searchEl = document.getElementById('searchBox');
   const searchTerm = searchEl ? searchEl.value.trim().toLowerCase() : '';
