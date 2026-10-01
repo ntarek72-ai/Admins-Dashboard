@@ -882,9 +882,26 @@ function actionDialog(kind, id){
       fields.push({ name:'newOrderNumber', label:'New order number', value:(t.newOrderNumber || '') });
       fields.push({ name:'resolutionNote', label:'Resolution note', type:'textarea', value:(t.resolutionNote || '') });
     }
+    // Admin only: send the ticket to the Retail Issue Tracker from here (for when the person who opened it forgot).
+    const canSendRetail = !t.retailIssueId && t.status !== 'Resolved';
+    if(canSendRetail){
+      fields.push({ name:'retailComment', label:'Send to Retail Tracker: comment for Mohamed Sayed (leave empty to NOT send)', type:'textarea', placeholder:(lastComment(t) || t.issue || '') });
+    }
     ask({
       title:'Edit ' + t.orderNumber, intro:'Fix what is wrong. Who holds the ticket and its status do not change, and every change is written in the history.', confirm:'Save changes', fields:fields,
-      run:async function(v){ const d = await api('editTicket', { id:id, fields:v }); toast('Ticket updated'); applyPatch(d); }
+      savingLabel:'Saving…',
+      run:async function(v){
+        const retailComment = v.retailComment || '';
+        delete v.retailComment;
+        let d = await api('editTicket', { id:id, fields:v });
+        toast('Ticket updated');
+        applyPatch(d);
+        if(retailComment){
+          d = await api('sendToRetail', { id:id, comment:retailComment });
+          toast('Confirmed: the issue was created in the Retail Issue Tracker and assigned to Mohamed Sayed.', 9000);
+          applyPatch(d);
+        }
+      }
     });
   }
   if(kind === 'delete') ask({
