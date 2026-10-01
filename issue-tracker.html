@@ -87,6 +87,9 @@
   .overdue-row:hover{background:#FBE6E4;}
   .overdue-row td:first-child{border-left:4px solid var(--danger);}
   .overdue-badge{display:inline-block;margin-top:4px;background:var(--danger);color:#fff;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:800;white-space:nowrap;}
+  .otype-tag{display:inline-block;margin-top:4px;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;white-space:nowrap;}
+  .otype-walkin{background:#FBEADB;color:#B45309;}
+  .otype-vpn{background:#E3ECFB;color:#1D4ED8;}
   .origin-tag{display:inline-block;margin-top:4px;padding:2px 9px;border-radius:999px;background:#D9F2EE;color:#0B766E;font-size:10.5px;font-weight:700;white-space:nowrap;}
   #hoModal{display:none;position:fixed;inset:0;background:rgba(27,36,54,.55);z-index:900;align-items:center;justify-content:center;padding:16px;}
   .ho-card{background:#fff;border-radius:14px;padding:22px;width:100%;max-width:420px;box-shadow:0 20px 50px rgba(0,0,0,.3);}
@@ -706,6 +709,23 @@ function openDurationHtml(issue){
   return '<span class="duration-pill ' + cls + '">' + text + '</span>';
 }
 
+// Order type is worked out from the first letter of the order number (capital or small):
+//   O... -> Walk In (this includes numbers written like "Order 05095-002-0010")
+//   Y... -> VPN
+// Anything else is left blank. It is never stored, so it always follows the order number.
+function orderTypeOf(i){
+  const s = String((i && i.oldOrderNumber) || '').trim();
+  if(/^o/i.test(s)) return 'Walk In';
+  if(/^y/i.test(s)) return 'VPN';
+  return '';
+}
+function orderTypeBadge(i){
+  const t = orderTypeOf(i);
+  if(!t) return '';
+  return '<br><span class="otype-tag ' + (t === 'VPN' ? 'otype-vpn' : 'otype-walkin') + '">' + t + '</span>';
+}
+function fieldVal(i, key){ return key === 'orderType' ? orderTypeOf(i) : i[key]; }
+
 function uniqueValues(field){
   const set = new Set();
   issues.forEach(function(i){ if(i[field]) set.add(i[field]); });
@@ -717,17 +737,17 @@ function countBy(field, value, activeFilters){
     return Object.keys(activeFilters).every(function(k){
       if(k === field) return true;             // never filter a dimension by its own current selection
       if(k === 'status') return (i.status || 'Open') === activeFilters[k];
-      return i[k] === activeFilters[k];
+      return fieldVal(i, k) === activeFilters[k];
     });
   });
   if(field === 'status') return subset.filter(function(i){ return (i.status || 'Open') === value; }).length;
-  return subset.filter(function(i){ return i[field] === value; }).length;
+  return subset.filter(function(i){ return fieldVal(i, field) === value; }).length;
 }
 
 function populateFilterOptions(){
   const bar = document.getElementById('filterBar');
-  const ids = ['f_status','f_cycle','f_pharmacy','f_company','f_assignedTo','f_submittedBy'];
-  const fieldByFilterId = { f_status:'status', f_cycle:'cycle', f_pharmacy:'pharmacy', f_company:'company', f_assignedTo:'assignedTo', f_submittedBy:'submittedBy' };
+  const ids = ['f_status','f_orderType','f_cycle','f_pharmacy','f_company','f_assignedTo','f_submittedBy'];
+  const fieldByFilterId = { f_status:'status', f_orderType:'orderType', f_cycle:'cycle', f_pharmacy:'pharmacy', f_company:'company', f_assignedTo:'assignedTo', f_submittedBy:'submittedBy' };
   const previousValues = {}, activeFilters = {};
   ids.forEach(function(id){
     const el = document.getElementById(id);
@@ -738,6 +758,7 @@ function populateFilterOptions(){
 
   const filters = [
     { id: 'f_status', label: 'Status', options: ['Open', 'Resolved'] },
+    { id: 'f_orderType', label: 'Order Type', options: ['VPN', 'Walk In'] },
     { id: 'f_cycle', label: 'Cycle', options: CYCLE_LIST.concat(uniqueValues('cycle').filter(function(c){ return CYCLE_LIST.indexOf(c) === -1; })) },
     { id: 'f_pharmacy', label: 'Pharmacy', options: uniqueValues('pharmacy') },
     { id: 'f_company', label: 'Company', options: uniqueValues('company') },
@@ -775,7 +796,7 @@ function updateDateClear(){
 }
 
 function clearFilters(){
-  ['f_status','f_cycle','f_pharmacy','f_company','f_assignedTo','f_submittedBy'].forEach(function(id){
+  ['f_status','f_orderType','f_cycle','f_pharmacy','f_company','f_assignedTo','f_submittedBy'].forEach(function(id){
     const el = document.getElementById(id);
     if(el) el.value = '';
   });
@@ -786,8 +807,8 @@ function clearFilters(){
 }
 
 function getFilters(){
-  const ids = ['f_status','f_cycle','f_pharmacy','f_company','f_assignedTo','f_submittedBy'];
-  const keys = ['status','cycle','pharmacy','company','assignedTo','submittedBy'];
+  const ids = ['f_status','f_orderType','f_cycle','f_pharmacy','f_company','f_assignedTo','f_submittedBy'];
+  const keys = ['status','orderType','cycle','pharmacy','company','assignedTo','submittedBy'];
   const result = {};
   ids.forEach(function(id, i){
     const el = document.getElementById(id);
@@ -806,7 +827,7 @@ function render(){
     return b.id - a.id;                    // newest first inside each group
   });
   Object.keys(filters).forEach(function(key){
-    list = list.filter(function(i){ return i[key] === filters[key]; });
+    list = list.filter(function(i){ return fieldVal(i, key) === filters[key]; });
   });
   const dateVal = (document.getElementById('f_date') || {}).value;
   if(dateVal) list = list.filter(function(i){ return String(i.dateOpened || '').slice(0, 10) === dateVal; });
@@ -815,6 +836,7 @@ function render(){
   const searchTerm = searchEl ? searchEl.value.trim().toLowerCase() : '';
   if(searchTerm){
     list = list.filter(function(i){
+      if(orderTypeOf(i).toLowerCase().indexOf(searchTerm) !== -1) return true;
       return Object.keys(i).some(function(key){
         const val = i[key];
         return val != null && String(val).toLowerCase().indexOf(searchTerm) !== -1;
@@ -858,7 +880,7 @@ function render(){
         '<td><span class="status-badge ' + statusCls + '">' + (i.status === 'Resolved' ? 'Resolved' : 'Open') + '</span>' +
           (overdue ? '<br><span class="overdue-badge">' + OVERDUE_DAYS + '+ days</span>' : '') + handoverCell(i) + '</td>' +
         '<td>' + (i.submittedBy || '\u2014') + importedTag + '</td>' +
-        '<td>' + i.oldOrderNumber + '</td>' +
+        '<td>' + i.oldOrderNumber + orderTypeBadge(i) + '</td>' +
         '<td>' + (i.pharmacy || '\u2014') + '</td>' +
         '<td>' + (i.company || '\u2014') + '</td>' +
         '<td style="max-width:220px;">' + (i.comment || '\u2014') + attachmentCell(i) + '</td>' +
@@ -963,7 +985,7 @@ function exportCSV(){
   const filters = getFilters();
   let list = issues.slice().sort(function(a, b){ return b.id - a.id; });
   Object.keys(filters).forEach(function(key){
-    list = list.filter(function(i){ return i[key] === filters[key]; });
+    list = list.filter(function(i){ return fieldVal(i, key) === filters[key]; });
   });
   if(list.length === 0){
     alert('No issues to export.');
