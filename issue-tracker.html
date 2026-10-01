@@ -649,6 +649,7 @@ async function resolveIssue(id){
     return;
   }
   putIssueLocally(r.issue);
+  populateFilterOptions();
   render();
   if(r.status === 'already') alert('Someone else already resolved this issue, so your text was not saved. Their answer is shown now.');
 }
