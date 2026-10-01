@@ -601,6 +601,7 @@ function openHandoverDialog(id){
 }
 
 async function addIssue(){
+  if(!canLogIssues()) return;
   if(!needFresh()) return;
   const handoverTo = document.getElementById('handoverToInput').value;
   const submittedBy = document.getElementById('submittedByInput').value;
@@ -1080,7 +1081,15 @@ function isAdmin(){
   return currentUserEmail === ADMIN_EMAIL;
 }
 
+// People who can sign in and work on issues (resolve them) but cannot log new ones.
+const CANNOT_LOG_EMAILS = ["m.farag@yodawy.com"];   // Mohamed Sayed
+function canLogIssues(){
+  return CANNOT_LOG_EMAILS.indexOf(currentUserEmail) === -1;
+}
+
 function applyAdminVisibility(){
+  const addBox = document.querySelector('.add-box');
+  if(addBox) addBox.style.display = canLogIssues() ? '' : 'none';
   const notifyBar = document.getElementById('notifyBar');
   if(notifyBar) notifyBar.style.display = isAdmin() ? 'flex' : 'none';
   const importBtn = document.getElementById('importBtn');
