@@ -195,6 +195,7 @@
       <select class="in" id="fPharmacy" aria-label="Filter by pharmacy"></select>
       <select class="in" id="fHolder" aria-label="Filter by who holds the ticket"></select>
       <select class="in" id="fType" aria-label="Filter by order type"></select>
+      <select class="in" id="fRetail" aria-label="Filter by Retail Issue Tracker status"></select>
       <input class="in" id="fDate" type="date" aria-label="Filter by date opened" title="Opened on this date">
       <button class="btn quiet" id="fDateClear" type="button" style="display:none">Clear date</button>
     </div>
@@ -235,7 +236,7 @@ const CRED_KEY = 'ticket-handover-cred';
 const SNAP_KEY = 'ticket-handover-snapshot-';
 
 /* ===================== STATE ===================== */
-const S = { date:'', otype:'', usage:null, loading:false, lastOk:'', preview:false, busy:0, notify:false, cred:null, me:null, users:[], tickets:[], events:[], tab:'inbox', q:'', company:'', pharmacy:'', holder:'', open:null, timer:null };
+const S = { retail:'', date:'', otype:'', usage:null, loading:false, lastOk:'', preview:false, busy:0, notify:false, cred:null, me:null, users:[], tickets:[], events:[], tab:'inbox', q:'', company:'', pharmacy:'', holder:'', open:null, timer:null };
 const $ = function(s){ return document.querySelector(s); };
 
 /* ===================== HELPERS ===================== */
@@ -373,7 +374,7 @@ async function maybeSyncRetail(){
       if(p.ticket.holder === S.me.email && p.ticket.retailStatus === 'Open' && !p.events.some(function(e){ return e.kind === 'retail_done'; })) toast('Confirmed: ' + p.ticket.orderNumber + ' now exists in the Retail Issue Tracker.', 9000);
       if(p.ticket.holder === S.me.email && p.ticket.retailStatus === 'Answered') toast('Mohamed Sayed resolved ' + p.ticket.orderNumber + ' in the Retail Tracker. Please check it and submit.');
     });
-    if((d.patches || []).length){ enrich(); render(); }
+    if((d.patches || []).length){ enrich(); fillFilters(); render(); }
   }catch(e){ /* background check: stay quiet, it will try again */ }
   retailSyncing = false;
 }
@@ -466,7 +467,7 @@ const TABS = [
 ];
 
 function fillFilters(){
-  const cs = {}, ps = {}, hs = {}, os = {};
+  const cs = {}, ps = {}, hs = {}, os = {}, rs = {};
   const tb = TABS.filter(function(x){ return x.id === S.tab; })[0];
   const scoped = tb ? S.tickets.filter(tb.fn) : S.tickets;
   scoped.forEach(function(t){
@@ -474,6 +475,7 @@ function fillFilters(){
     if(t.pharmacy) ps[t.pharmacy] = (ps[t.pharmacy] || 0) + 1;
     if(t.holder) hs[t.holder] = (hs[t.holder] || 0) + 1;
     const k = t.orderType || '__none'; os[k] = (os[k] || 0) + 1;
+    const rk = retailBucket(t); rs[rk] = (rs[rk] || 0) + 1;
   });
   const opts = function(all, label, cur){
     return '<option value="">' + label + '</option>' + Object.keys(all).sort().map(function(k){
@@ -487,6 +489,9 @@ function fillFilters(){
   $('#fHolder').innerHTML = '<option value="">Anyone holding</option>' + S.users.filter(function(u){ return !u.viewer; })
     .sort(function(a,b){ return a.name.localeCompare(b.name); }).map(function(u){
     return '<option value="' + esc(u.email) + '"' + (u.email === S.holder ? ' selected' : '') + '>' + esc(u.name) + ' (' + (hs[u.email] || 0) + ')</option>'; }).join('');
+  const retailLabels = { resolved: 'Resolved by Mohamed Sayed', open: 'Sent, not resolved yet', none: 'Not sent to Retail Tracker' };
+  $('#fRetail').innerHTML = '<option value="">Retail Tracker: any</option>' + ['resolved', 'open', 'none'].filter(function(k){ return rs[k]; }).map(function(k){
+    return '<option value="' + k + '"' + (k === S.retail ? ' selected' : '') + '>' + retailLabels[k] + ' (' + rs[k] + ')</option>'; }).join('');
   updateDateClear();
 }
 
@@ -496,11 +501,18 @@ function localDateStr(iso){
   return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate());
 }
 
+function retailBucket(t){
+  if(!t.retailIssueId) return 'none';
+  if(t.retailStatus === 'Answered' || t.retailStatus === 'Resolved') return 'resolved';
+  return 'open';
+}
+
 function passesFilters(t){
   if(S.company && t.company !== S.company) return false;
   if(S.pharmacy && t.pharmacy !== S.pharmacy) return false;
   if(S.holder && t.holder !== S.holder) return false;
   if(S.otype && (t.orderType || '__none') !== S.otype) return false;
+  if(S.retail && retailBucket(t) !== S.retail) return false;
   if(S.date && localDateStr(t.createdAt) !== S.date) return false;
   if(S.q){
     const hay = [t.orderNumber, t.orderType, t.company, t.pharmacy, t.issue, t.newOrderNumber, t.id].join(' ').toLowerCase();
@@ -536,7 +548,7 @@ function render(){
   rows.sort(function(a,b){ return tb.id === 'inbox' ? (a.updatedAt < b.updatedAt ? -1 : 1) : (a.updatedAt < b.updatedAt ? 1 : -1); });
 
   if(!rows.length){
-    const filtered = S.q || S.company || S.pharmacy || S.holder || S.otype || S.date;
+    const filtered = S.q || S.company || S.pharmacy || S.holder || S.otype || S.date || S.retail;
     $('#list').innerHTML = '<div class="empty"><b>' + esc(filtered ? 'No tickets match these filters' : tb.empty[0]) + '</b>' +
       esc(filtered ? 'Clear the search or filters to see more.' : tb.empty[1]) + '</div>';
     return;
@@ -981,6 +993,7 @@ $('#fCompany').addEventListener('change', function(e){ S.company = e.target.valu
 $('#fPharmacy').addEventListener('change', function(e){ S.pharmacy = e.target.value; render(); });
 $('#fHolder').addEventListener('change', function(e){ S.holder = e.target.value; render(); });
 $('#fType').addEventListener('change', function(e){ S.otype = e.target.value; render(); });
+$('#fRetail').addEventListener('change', function(e){ S.retail = e.target.value; render(); });
 $('#fDate').addEventListener('change', function(e){ S.date = e.target.value; updateDateClear(); render(); });
 $('#fDateClear').addEventListener('click', function(){ S.date = ''; $('#fDate').value = ''; $('#fDateClear').style.display = 'none'; render(); });
 
