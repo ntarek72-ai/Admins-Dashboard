@@ -467,7 +467,9 @@ const TABS = [
 
 function fillFilters(){
   const cs = {}, ps = {}, hs = {}, os = {};
-  S.tickets.forEach(function(t){
+  const tb = TABS.filter(function(x){ return x.id === S.tab; })[0];
+  const scoped = tb ? S.tickets.filter(tb.fn) : S.tickets;
+  scoped.forEach(function(t){
     if(t.company) cs[t.company] = (cs[t.company] || 0) + 1;
     if(t.pharmacy) ps[t.pharmacy] = (ps[t.pharmacy] || 0) + 1;
     if(t.holder) hs[t.holder] = (hs[t.holder] || 0) + 1;
@@ -973,7 +975,7 @@ $('#notifyToggle').addEventListener('change', async function(e){
   catch(err){ e.target.checked = !want; if(err.code === 'AUTH'){ signOut(); return; } toast(err.message); }
   e.target.disabled = false;
 });
-$('#tabs').addEventListener('click', function(e){ const b = e.target.closest('[data-tab]'); if(b){ S.tab = b.dataset.tab; render(); } });
+$('#tabs').addEventListener('click', function(e){ const b = e.target.closest('[data-tab]'); if(b){ S.tab = b.dataset.tab; fillFilters(); render(); } });
 $('#q').addEventListener('input', function(e){ S.q = e.target.value.trim(); render(); });
 $('#fCompany').addEventListener('change', function(e){ S.company = e.target.value; render(); });
 $('#fPharmacy').addEventListener('change', function(e){ S.pharmacy = e.target.value; render(); });
@@ -985,7 +987,9 @@ $('#fDateClear').addEventListener('click', function(){ S.date = ''; $('#fDate').
 function updateDateClear(){
   const btn = $('#fDateClear');
   if(!S.date){ btn.style.display = 'none'; return; }
-  const n = S.tickets.filter(function(t){ return localDateStr(t.createdAt) === S.date; }).length;
+  const tb = TABS.filter(function(x){ return x.id === S.tab; })[0];
+  const scoped = tb ? S.tickets.filter(tb.fn) : S.tickets;
+  const n = scoped.filter(function(t){ return localDateStr(t.createdAt) === S.date; }).length;
   btn.textContent = 'Clear date (' + n + ')';
   btn.style.display = '';
 }
