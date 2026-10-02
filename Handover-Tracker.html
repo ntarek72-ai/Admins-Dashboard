@@ -155,15 +155,30 @@
 <section id="login">
   <form class="login-card" id="loginForm" autocomplete="on">
     <h1>Ticket Handover</h1>
-    <p>Sign in with your work email and the team password.</p>
+    <p>Sign in with your work email and your personal password.<br><span style="font-size:13px">First time? Use the team password once. You will then be asked to create your own.</span></p>
     <div class="field"><label class="f" for="lgEmail">Email</label>
       <input class="in" id="lgEmail" type="email" autocomplete="username" required></div>
-    <div class="field"><label class="f" for="lgPw">Team password</label>
+    <div class="field"><label class="f" for="lgPw">Password</label>
       <input class="in" id="lgPw" type="password" autocomplete="current-password" required></div>
     <label style="display:flex;gap:8px;align-items:center;font-size:14px;margin:0 0 14px;cursor:pointer">
       <input type="checkbox" id="lgRemember" checked> Keep me signed in on this device</label>
     <button class="btn primary block" id="lgBtn" type="submit">Sign in</button>
     <p class="err" id="lgErr" role="alert"></p>
+  </form>
+</section>
+
+<!-- ============ Create your own password ============ -->
+<section id="setpw" class="hidden" style="min-height:100vh;display:grid;place-items:center;padding:24px">
+  <form class="login-card" id="setpwForm" autocomplete="off">
+    <h1>Create your password</h1>
+    <p>Choose a personal password (at least 8 characters). You will use it from now on, and the team password will stop working for you.</p>
+    <div class="field"><label class="f" for="npw1">New password</label>
+      <input class="in" id="npw1" type="password" autocomplete="new-password" required></div>
+    <div class="field"><label class="f" for="npw2">Repeat the new password</label>
+      <input class="in" id="npw2" type="password" autocomplete="new-password" required></div>
+    <button class="btn primary block" id="npwBtn" type="submit">Save password</button>
+    <p class="err" id="npwErr" role="alert"></p>
+    <button class="btn quiet block" id="npwBack" type="button">Back to sign in</button>
   </form>
 </section>
 
@@ -175,6 +190,8 @@
       <div class="who"><b id="meName"></b><br><span id="syncTxt">Loading…</span></div>
       <button class="btn quiet" id="refreshBtn" type="button">Refresh</button>
       <button class="btn" id="exportBtn" type="button">Export sheet</button>
+      <button class="btn quiet hidden" id="pwAdminBtn" type="button">Passwords</button>
+      <button class="btn quiet" id="chPwBtn" type="button">Change password</button>
       <button class="btn quiet" id="logoutBtn" type="button">Sign out</button>
       <button class="btn primary" id="newBtn" type="button">New ticket</button>
     </header>
@@ -325,8 +342,9 @@ async function signIn(email, pw, silent, remember){
   S.cred = { email: email.trim(), pw: pw };
   try{
     const d = await api('login');
+    if(d.mustSetPassword){ showSetPassword(remember !== false); return; }
     S.me = d.user; if(remember !== false) store(CRED_KEY, S.cred);
-    $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
+    $('#login').classList.add('hidden'); $('#setpw').classList.add('hidden'); $('#app').classList.remove('hidden');
     $('#meName').textContent = S.me.name;
     if(Array.isArray(d.tickets)) ingest(d); else await loadAll();
     clearInterval(S.timer); S.timer = setInterval(function(){ if(!document.hidden) loadAll(true); }, CONFIG.REFRESH_MS);
@@ -343,9 +361,20 @@ async function signIn(email, pw, silent, remember){
     $('#lgErr').textContent = e.code === 'AUTH' ? '' : 'Could not sign you in automatically: ' + e.message;
   }
 }
+/* First sign-in (or after a reset): the person must choose a personal password before anything else. */
+let pendingRemember = true;
+function showSetPassword(remember){
+  pendingRemember = remember;
+  clearInterval(S.timer);
+  S.me = null; S.preview = false;
+  store(CRED_KEY, null);                       // forget the team / temporary password saved on this device
+  $('#app').classList.add('hidden'); $('#login').classList.add('hidden'); $('#setpw').classList.remove('hidden');
+  $('#npw1').value = ''; $('#npw2').value = ''; $('#npwErr').textContent = '';
+  $('#npw1').focus();
+}
 function signOut(){
   store(CRED_KEY, null); S.cred = null; S.me = null; clearInterval(S.timer);
-  $('#app').classList.add('hidden'); $('#login').classList.remove('hidden');
+  $('#app').classList.add('hidden'); $('#setpw').classList.add('hidden'); $('#login').classList.remove('hidden');
   $('#lgPw').value = '';
 }
 
@@ -432,6 +461,7 @@ function applyRole(){
 function updateNotifyBar(){
   const bar = $('#notifyBar');
   bar.classList.toggle('hidden', !(S.me && S.me.admin));
+  $('#pwAdminBtn').classList.toggle('hidden', !(S.me && S.me.admin));
   applyRole();
   $('#notifyToggle').checked = S.notify;
   $('#usageTxt').textContent = (typeof S.usage === 'number') ? 'Storage used: ' + S.usage + '%' + (S.usage >= 80 ? ' (run archiveOldResolved soon)' : '') : '';
@@ -713,6 +743,8 @@ function fieldHTML(f){
         return '<option value="' + esc(v) + '"' + (f.value === v ? ' selected' : '') + '>' + esc(l) + '</option>'; }).join('') + '</select>';
   } else if(f.type === 'textarea'){
     ctl = '<textarea class="in" name="' + f.name + '" dir="auto" placeholder="' + esc(f.placeholder || '') + '"' + req + '>' + esc(f.value || '') + '</textarea>';
+  } else if(f.type === 'password'){
+    ctl = '<input class="in" type="password" name="' + f.name + '" autocomplete="new-password" placeholder="' + esc(f.placeholder || '') + '"' + req + '>';
   } else {
     ctl = '<input class="in" name="' + f.name + '" dir="auto" autocomplete="off" value="' + esc(f.value || '') + '" placeholder="' + esc(f.placeholder || '') + '"' + req + '>';
   }
@@ -995,6 +1027,86 @@ $('#loginForm').addEventListener('submit', async function(ev){
   btn.disabled = false; btn.textContent = 'Sign in';
 });
 $('#logoutBtn').onclick = signOut;
+
+$('#setpwForm').addEventListener('submit', async function(ev){
+  ev.preventDefault();
+  const a = $('#npw1').value, b = $('#npw2').value, err = $('#npwErr'), btn = $('#npwBtn');
+  if(a.length < 8){ err.textContent = 'The password must be at least 8 characters.'; return; }
+  if(a !== b){ err.textContent = 'The two passwords are not the same.'; return; }
+  btn.disabled = true; btn.textContent = 'Saving…'; err.textContent = '';
+  try{
+    const email = S.cred.email;
+    await api('setPassword', { newPassword:a });
+    await signIn(email, a, false, pendingRemember);
+  }catch(e){ err.textContent = e.message; }
+  btn.disabled = false; btn.textContent = 'Save password';
+});
+$('#npwBack').onclick = function(){ S.cred = null; $('#setpw').classList.add('hidden'); $('#login').classList.remove('hidden'); $('#lgPw').value = ''; $('#lgErr').textContent = ''; };
+
+$('#chPwBtn').onclick = function(){
+  ask({
+    title:'Change my password', intro:'At least 8 characters. You stay signed in on this device.', confirm:'Change password',
+    fields:[
+      { name:'cur', label:'Current password', type:'password', required:true },
+      { name:'np1', label:'New password', type:'password', required:true },
+      { name:'np2', label:'Repeat the new password', type:'password', required:true }
+    ],
+    run:async function(v){
+      if(v.np1.length < 8) throw new Error('The new password must be at least 8 characters.');
+      if(v.np1 !== v.np2) throw new Error('The two new passwords are not the same.');
+      const saved = S.cred;
+      S.cred = { email:saved.email, pw:v.cur };            // the server checks the password typed here, not the saved one
+      try{ await api('setPassword', { newPassword:v.np1 }); }
+      catch(e){ S.cred = saved; if(e.code === 'AUTH') throw new Error('The current password is not correct.'); throw e; }
+      S.cred = { email:saved.email, pw:v.np1 };
+      if(load(CRED_KEY)) store(CRED_KEY, S.cred);
+      toast('Password changed');
+    }
+  });
+};
+
+/* Admin: who has a personal password, and a Reset button for anyone who forgot theirs. */
+async function passwordsDialog(){
+  let st;
+  try{ st = await api('passwordStatus'); }catch(e){ if(e.code === 'AUTH'){ signOut(); return; } toast(e.message); return; }
+  const label = { none:'Not created yet', temp:'Waiting for them to choose a new password', set:'Personal password set' };
+  const color = { none:'#B45309', temp:'#B45309', set:'#0F766E' };
+  const rows = st.users.map(function(u){
+    const me = u.email === S.me.email;
+    return '<div data-row="' + esc(u.email) + '" style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)">' +
+      '<div style="flex:1;min-width:0"><b>' + esc(u.name) + '</b>' + (u.retailOnly ? ' <span class="hint">(Retail only)</span>' : '') + '<br><span class="hint">' + esc(u.email) + '</span></div>' +
+      '<span data-state style="font-size:12.5px;color:' + color[u.state] + ';text-align:right">' + label[u.state] + '</span>' +
+      (me ? '<span style="width:64px"></span>' : '<button class="btn" type="button" data-reset="' + esc(u.email) + '" data-name="' + esc(u.name) + '">Reset</button>') + '</div>';
+  }).join('');
+  const notSet = st.users.filter(function(u){ return u.state === 'none'; }).length;
+  ask({
+    title:'Passwords', confirm:'Done',
+    intro:'Reset sends a person back to “first sign-in”: you get a temporary password to give them privately, they use it once and then choose their own.',
+    before:'<div id="pwResult" class="hint" style="margin:0 0 10px;font-size:14px"></div>' +
+      '<p class="hint" style="margin:0 0 6px">' + (notSet ? notSet + ' of ' + st.users.length + ' have not created a personal password yet. ' : 'Everyone has created a personal password. ') +
+      (st.teamPasswordAllowed ? (notSet ? '' : 'You can now set ALLOW_TEAM_PASSWORD to false in the script so the team password stops working completely.') : 'The team password is switched off.') + '</p>' + rows,
+    fields:[],
+    run:async function(){},
+    onOpen:function(form){
+      form.addEventListener('click', async function(e){
+        const b = e.target.closest('[data-reset]'); if(!b) return;
+        if(!window.confirm('Reset the password of ' + b.dataset.name + '?\n\nTheir current password will stop working right away.')) return;
+        b.disabled = true;
+        try{
+          const r = await api('resetPassword', { targetEmail:b.dataset.reset });
+          const box = form.querySelector('#pwResult');
+          box.style.cssText = 'margin:0 0 12px;padding:10px 12px;background:#E7F5F3;border:1px solid #9BD3CC;border-radius:8px;color:#064E48;font-size:14px';
+          box.innerHTML = 'Temporary password for <b>' + esc(r.name) + '</b>: <b style="font-size:16px;letter-spacing:.5px;user-select:all">' + esc(r.tempPassword) + '</b><br>Send it to them privately. They sign in with it once and choose their own. It is shown only now.';
+          const row = form.querySelector('[data-row="' + b.dataset.reset + '"] [data-state]');
+          if(row){ row.textContent = label.temp; row.style.color = color.temp; }
+        }catch(err){ if(err.code === 'AUTH'){ $('#dlg').close(); signOut(); return; } toast(err.message, 6000); }
+        b.disabled = false;
+      });
+    }
+  });
+  const cancel = $('#dlg').querySelector('[data-close]'); if(cancel) cancel.style.display = 'none';
+}
+$('#pwAdminBtn').onclick = passwordsDialog;
 $('#refreshBtn').onclick = function(){ loadAll(); };
 $('#newBtn').onclick = newTicketDialog;
 $('#exportBtn').onclick = exportCSV;

@@ -110,8 +110,17 @@
     <div class="brand">Yodawy</div>
     <div class="tag">Retail Receipt Issue Tracker</div>
     <input type="text" id="userInput" placeholder="Email" autocomplete="off">
-    <input type="password" id="passInput" placeholder="Password" autocomplete="off">
-    <button onclick="tryLogin()">Sign in</button>
+    <div id="loginBox">
+      <input type="password" id="passInput" placeholder="Password" autocomplete="off">
+      <button id="loginBtn" onclick="tryLogin()">Sign in</button>
+      <div style="font-size:12px;color:#6B7280;margin-top:10px">First time? Use the team password once, then you will create your own.</div>
+    </div>
+    <div id="setPwBox" style="display:none">
+      <div style="font-size:14px;margin:0 0 10px"><b>Create your password</b><br><span style="font-size:12.5px;color:#6B7280">At least 8 characters. You will use it from now on; the team password will stop working for you.</span></div>
+      <input type="password" id="newPass1" placeholder="New password" autocomplete="new-password">
+      <input type="password" id="newPass2" placeholder="Repeat the new password" autocomplete="new-password">
+      <button id="savePwBtn" onclick="savePassword()">Save password</button>
+    </div>
     <div class="login-error" id="loginError"></div>
     <div class="powered-by">Powered by <b>Nada Onsy</b></div>
   </div>
@@ -454,7 +463,7 @@ let handoverBusy = false;
 async function callHandover(fields){
   const res = await fetchWithTimeout_(HANDOVER_URL, {
     method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(Object.assign({ action: 'create', email: currentUserEmail, password: SHARED_PASSWORD }, fields))
+    body: JSON.stringify(Object.assign({ action: 'create', email: currentUserEmail, password: currentPassword }, fields))
   }, 75000);
   const text = await res.text();
   try{ return JSON.parse(text); }catch(e){ throw new Error('The Handover tracker did not answer clearly.'); }
@@ -524,7 +533,7 @@ async function loadHandoverLinks(){
   handoverLinksLoading = true;
   try{
     const res = await fetchWithTimeout_(HANDOVER_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'retailLinks', password: SHARED_PASSWORD }) }, 30000);
+      body: JSON.stringify({ action: 'retailLinks', email: currentUserEmail, password: currentPassword }) }, 30000);
     const text = await res.text();
     const j = JSON.parse(text);
     if(j.ok && j.data && Array.isArray(j.data.links)){
@@ -1072,7 +1081,7 @@ const TEAM_EMAILS = {
   "m.eldeen@yodawy.com": "Mohamed El Deen",
   "f.abdelmoneim@yodawy.com": "Fatima Abdelmoneim"
 };
-const SHARED_PASSWORD = "Yodawy@2026";
+let currentPassword = null;     // the personal password typed at sign-in; kept only in memory
 
 const ADMIN_EMAIL = "n.onsy@yodawy.com";
 let currentUserEmail = null;
@@ -1098,19 +1107,57 @@ function applyAdminVisibility(){
   if(actionsHeader) actionsHeader.style.display = isAdmin() ? 'table-cell' : 'none';
 }
 
-function tryLogin(){
+// Sign-in is checked on the server (the Ticket Handover script holds everybody's personal password, stored only as a hash).
+async function handoverAuth_(payload){
+  const res = await fetchWithTimeout_(HANDOVER_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) }, 40000);
+  const text = await res.text();
+  try{ return JSON.parse(text); }catch(e){ throw new Error('The server did not answer clearly. Please try again.'); }
+}
+
+let pendingLogin = null;
+function enterApp_(email, password){
+  currentUserEmail = email; currentPassword = password; pendingLogin = null;
+  document.getElementById('loginGate').style.display = 'none';
+  document.getElementById('appContent').style.display = 'block';
+  applyAdminVisibility();
+  render();
+}
+
+async function tryLogin(){
   const u = document.getElementById('userInput').value.trim().toLowerCase();
   const p = document.getElementById('passInput').value;
-  if (TEAM_EMAILS[u] && p === SHARED_PASSWORD){
-    currentUserEmail = u;
-    document.getElementById('loginGate').style.display = 'none';
-    document.getElementById('appContent').style.display = 'block';
-    applyAdminVisibility();
-    render();
-  } else {
-    document.getElementById('loginError').textContent = 'Incorrect email or password.';
-  }
+  const err = document.getElementById('loginError'), btn = document.getElementById('loginBtn');
+  if(!TEAM_EMAILS[u] || !p){ err.textContent = 'Incorrect email or password.'; return; }
+  err.textContent = 'Signing in... the first sign-in after a quiet period can take a few seconds.'; btn.disabled = true;
+  try{
+    const j = await handoverAuth_({ action: 'retailLogin', email: u, password: p });
+    if(!j.ok){ err.textContent = (j.code === 'AUTH') ? 'Incorrect email or password.' : (j.error || 'Could not sign in.'); }
+    else if(j.data && j.data.mustSetPassword){
+      pendingLogin = { email: u, password: p };
+      err.textContent = '';
+      document.getElementById('loginBox').style.display = 'none';
+      document.getElementById('setPwBox').style.display = 'block';
+      document.getElementById('newPass1').focus();
+    } else { err.textContent = ''; enterApp_(u, p); }
+  }catch(e){ err.textContent = 'Could not reach the server. Check your connection and try again.'; }
+  btn.disabled = false;
 }
+
+async function savePassword(){
+  const a = document.getElementById('newPass1').value, b = document.getElementById('newPass2').value;
+  const err = document.getElementById('loginError'), btn = document.getElementById('savePwBtn');
+  if(!pendingLogin){ err.textContent = 'Please sign in again.'; return; }
+  if(a.length < 8){ err.textContent = 'The password must be at least 8 characters.'; return; }
+  if(a !== b){ err.textContent = 'The two passwords are not the same.'; return; }
+  err.textContent = 'Saving...'; btn.disabled = true;
+  try{
+    const j = await handoverAuth_({ action: 'setPassword', email: pendingLogin.email, password: pendingLogin.password, newPassword: a });
+    if(j.ok){ err.textContent = ''; enterApp_(pendingLogin.email, a); }
+    else err.textContent = j.error || 'Could not save the password.';
+  }catch(e){ err.textContent = 'Could not reach the server. Check your connection and try again.'; }
+  btn.disabled = false;
+}
+document.getElementById('newPass2').addEventListener('keydown', function(e){ if(e.key==='Enter') savePassword(); });
 document.getElementById('passInput').addEventListener('keydown', function(e){ if(e.key==='Enter') tryLogin(); });
 </script>
 <div id="hoModal"></div>
