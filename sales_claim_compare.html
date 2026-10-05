@@ -733,64 +733,119 @@ function exportFilteredOrders(){
 
   function norm(v, dflt){ const t = String(v == null ? '' : v).trim(); return t || dflt; }
 
-  // Lookup sets/maps so each order can be checked against the other station
-  const claimByOrder = {};
-  claimData.forEach(function(r){
-    const k = norm(r[cOrderCol], '').toLowerCase();
-    if(!k) return;
-    const st = norm(r[cStatusCol], 'Unknown');
-    if(!claimByOrder[k]) claimByOrder[k] = [];
-    if(claimByOrder[k].indexOf(st) === -1) claimByOrder[k].push(st);
-  });
-  const salesByOrder = {};
-  salesData.forEach(function(r){
-    const k = norm(r[sOrderCol], '').toLowerCase();
-    if(!k) return;
-    const st = norm(r[sStatusCol], 'Unknown');
-    if(!salesByOrder[k]) salesByOrder[k] = [];
-    if(salesByOrder[k].indexOf(st) === -1) salesByOrder[k].push(st);
-  });
-
-  // Same rules as the cards: excluded statuses are skipped, so counts match what you see on screen
-  function pick(rows, cycleCol, payerCol, statusCol){
-    return rows.filter(function(r){
-      const status = norm(r[statusCol], 'Unknown');
-      if(EXCLUDED_STATUSES.has(status.toLowerCase())) return false;
-      if(cycleVal && norm(r[cycleCol], 'Unspecified') !== cycleVal) return false;
-      if(payerVal && norm(r[payerCol], 'Unspecified') !== payerVal) return false;
-      return true;
+  // Normalise every row of a station into {ref, cycle, payer, status, inFilter}
+  // inFilter uses the same rules as the cards (excluded statuses skipped), so counts match the screen.
+  function prep(rows, cycleCol, payerCol, statusCol, orderCol){
+    return rows.map(function(r){
+      const o = {
+        ref: norm(r[orderCol], ''),
+        cycle: norm(r[cycleCol], 'Unspecified'),
+        payer: norm(r[payerCol], 'Unspecified'),
+        status: norm(r[statusCol], 'Unknown')
+      };
+      o.excluded = EXCLUDED_STATUSES.has(o.status.toLowerCase());
+      o.inFilter = !o.excluded &&
+        (!cycleVal || o.cycle === cycleVal) &&
+        (!payerVal || o.payer === payerVal);
+      return o;
     });
   }
+  const S = prep(salesData, sCycleCol, sPayerCol, sStatusCol, sOrderCol);
+  const C = prep(claimData, cCycleCol, cPayerCol, cStatusCol, cOrderCol);
 
-  const salesOut = pick(salesData, sCycleCol, sPayerCol, sStatusCol).map(function(r){
-    const ref = norm(r[sOrderCol], '');
-    const match = claimByOrder[ref.toLowerCase()];
-    return {
-      'Cycle': norm(r[sCycleCol], 'Unspecified'),
-      'Payer': norm(r[sPayerCol], 'Unspecified'),
-      'Order Reference': ref,
-      'Sales Status': norm(r[sStatusCol], 'Unknown'),
-      'Found in Claim Station?': match ? 'Yes' : 'No',
-      'Claim Stage': match ? match.join(' / ') : ''
-    };
+  // Index by order reference: all rows (anywhere) + count inside the filter
+  function index(list){
+    const all = {}, cnt = {};
+    list.forEach(function(o){
+      const k = o.ref.toLowerCase();
+      if(!k) return;
+      (all[k] = all[k] || []).push(o);
+      if(o.inFilter) cnt[k] = (cnt[k] || 0) + 1;
+    });
+    return { all: all, cnt: cnt };
+  }
+  const sIdx = index(S), cIdx = index(C);
+
+  function whereIs(list){
+    if(!list || !list.length) return '';
+    return list.map(function(o){
+      return o.cycle + ' | ' + o.payer + ' | ' + o.status + (o.excluded ? ' (excluded status)' : '');
+    }).join('  ;  ');
+  }
+
+  // ---- Gap Details: only the orders that explain the difference ----
+  const gap = [];
+  function check(list, thisName, otherName, thisIdx, otherIdx){
+    const seen = {};
+    list.forEach(function(o){
+      if(!o.inFilter) return;
+      const k = o.ref.toLowerCase();
+      if(!k){
+        gap.push({ 'Issue': 'Empty order reference in ' + thisName, 'Order Reference': '', 'Cycle': o.cycle, 'Payer': o.payer,
+          'Status here': o.status, 'Count in Sales (filtered)': '', 'Count in Claim (filtered)': '', 'Where it is in the other station': '' });
+        return;
+      }
+      if(seen[k]) return;
+      seen[k] = true;
+      const here = thisIdx.cnt[k] || 0;
+      const there = otherIdx.cnt[k] || 0;
+      const sCount = thisName === 'Sales' ? here : there;
+      const cCount = thisName === 'Sales' ? there : here;
+      let issue = '';
+      if(there === 0){
+        issue = otherIdx.all[k]
+          ? 'In ' + thisName + ' only (exists in ' + otherName + ' but outside this filter)'
+          : 'In ' + thisName + ' only (not found in ' + otherName + ' at all)';
+      } else if(here > there){
+        issue = 'Duplicate / extra count in ' + thisName + ' (' + here + ' vs ' + there + ' in ' + otherName + ')';
+      }
+      if(issue){
+        gap.push({ 'Issue': issue, 'Order Reference': o.ref, 'Cycle': o.cycle, 'Payer': o.payer,
+          'Status here': thisName + ': ' + o.status,
+          'Count in Sales (filtered)': sCount, 'Count in Claim (filtered)': cCount,
+          'Where it is in the other station': whereIs(otherIdx.all[k]) });
+      }
+    });
+  }
+  check(S, 'Sales', 'Claim', sIdx, cIdx);
+  check(C, 'Claim', 'Sales', cIdx, sIdx);
+
+  // normalise column set so Excel gets one consistent table
+  const gapCols = ['Issue','Order Reference','Cycle','Payer','Status here','Count in Sales (filtered)','Count in Claim (filtered)','Where it is in the other station'];
+  const gapRows = gap.map(function(g){
+    const out = {};
+    gapCols.forEach(function(c){ out[c] = ''; });
+    Object.keys(g).forEach(function(k){ out[k] = g[k]; });
+    return out;
   });
 
-  const claimOut = pick(claimData, cCycleCol, cPayerCol, cStatusCol).map(function(r){
-    const ref = norm(r[cOrderCol], '');
-    const match = salesByOrder[ref.toLowerCase()];
-    return {
-      'Cycle': norm(r[cCycleCol], 'Unspecified'),
-      'Payer': norm(r[cPayerCol], 'Unspecified'),
-      'Sale Order': ref,
-      'Claim Stage': norm(r[cStatusCol], 'Unknown'),
-      'Found in Sales Station?': match ? 'Yes' : 'No',
-      'Sales Status': match ? match.join(' / ') : ''
-    };
+  const salesCount = S.filter(function(o){ return o.inFilter; }).length;
+  const claimCount = C.filter(function(o){ return o.inFilter; }).length;
+  const summary = [
+    { 'Issue': 'SUMMARY — Sales: ' + salesCount + '  |  Claim: ' + claimCount + '  |  Gap (Sales − Claim): ' + (salesCount - claimCount) }
+  ];
+  const gapSheetRows = summary.concat(gapRows.length ? gapRows : [{ 'Issue': 'No order-level mismatch found for this filter' }]);
+
+  // ---- Full lists ----
+  const salesOut = S.filter(function(o){ return o.inFilter; }).map(function(o){
+    const m = cIdx.cnt[o.ref.toLowerCase()];
+    return { 'Cycle': o.cycle, 'Payer': o.payer, 'Order Reference': o.ref, 'Sales Status': o.status,
+             'Found in Claim Station?': m ? 'Yes' : 'No',
+             'Claim Stage': m ? whereIs((cIdx.all[o.ref.toLowerCase()] || []).filter(function(x){ return x.inFilter; })).split('  ;  ').map(function(t){ return t.split(' | ')[2]; }).join(' / ') : '' };
+  });
+  const claimOut = C.filter(function(o){ return o.inFilter; }).map(function(o){
+    const m = sIdx.cnt[o.ref.toLowerCase()];
+    return { 'Cycle': o.cycle, 'Payer': o.payer, 'Sale Order': o.ref, 'Claim Stage': o.status,
+             'Found in Sales Station?': m ? 'Yes' : 'No',
+             'Sales Status': m ? (sIdx.all[o.ref.toLowerCase()] || []).filter(function(x){ return x.inFilter; }).map(function(x){ return x.status; }).join(' / ') : '' };
   });
 
   if(!salesOut.length && !claimOut.length){ alert('No orders for this filter.'); return; }
 
   const wb = XLSX.utils.book_new();
+  const wsGap = XLSX.utils.json_to_sheet(gapSheetRows, { header: gapCols });
+  wsGap['!cols'] = [{wch:60},{wch:22},{wch:16},{wch:26},{wch:30},{wch:14},{wch:14},{wch:70}];
+  XLSX.utils.book_append_sheet(wb, wsGap, 'Gap Details');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(salesOut), 'Sales Station');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(claimOut), 'Claim Station');
 
