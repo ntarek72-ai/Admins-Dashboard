@@ -396,9 +396,9 @@ setupUpload('claimFile', 'claimStatus', 'claimMap', 'claimCycleCol', 'claimPayer
   ['stage', 'status'],
   ['sale order', 'order reference', 'reference']);
 
-// Left empty on purpose: Returned (Sales) = Cancelled (Claim), so Returned orders are now counted.
-// To exclude any status again, add it here in lowercase, e.g. 'returned'.
-const EXCLUDED_STATUSES = new Set([]);
+const EXCLUDED_STATUSES = new Set([
+  'returned', 'reverse transport:return rx', 'will be returned'
+]);
 
 function buildIndex(rows, cycleCol, payerCol, statusCol){
   // { cycle: { payer: { total, statusCounts: {status: count} } } }
@@ -842,12 +842,16 @@ function exportFilteredOrders(){
     }).join(' / ');
   }
   const salesOut = S.filter(function(o){ return o.inFilter; }).map(function(o){
+    const k = o.ref.toLowerCase();
     return { 'Cycle': o.cycle, 'Payer': o.payer, 'Order Reference': o.ref, 'Sales Status': o.status,
-             'In Claim Station?': presence(cIdx, o.ref.toLowerCase(), 'Claim') };
+             'Found in Claim Station?': presence(cIdx, k, 'Claim'),
+             'Claim Stage': statusesOf(cIdx, k) };
   });
   const claimOut = C.filter(function(o){ return o.inFilter; }).map(function(o){
+    const k = o.ref.toLowerCase();
     return { 'Cycle': o.cycle, 'Payer': o.payer, 'Sale Order': o.ref, 'Claim Stage': o.status,
-             'In Sales Station?': presence(sIdx, o.ref.toLowerCase(), 'Sales') };
+             'Found in Sales Station?': presence(sIdx, k, 'Sales'),
+             'Sales Status': statusesOf(sIdx, k) };
   });
 
   if(!salesOut.length && !claimOut.length){ alert('No orders for this filter.'); return; }
