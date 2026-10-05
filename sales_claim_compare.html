@@ -396,9 +396,9 @@ setupUpload('claimFile', 'claimStatus', 'claimMap', 'claimCycleCol', 'claimPayer
   ['stage', 'status'],
   ['sale order', 'order reference', 'reference']);
 
-const EXCLUDED_STATUSES = new Set([
-  'returned', 'reverse transport:return rx', 'will be returned'
-]);
+// Left empty on purpose: Returned (Sales) = Cancelled (Claim), so Returned orders are now counted.
+// To exclude any status again, add it here in lowercase, e.g. 'returned'.
+const EXCLUDED_STATUSES = new Set([]);
 
 function buildIndex(rows, cycleCol, payerCol, statusCol){
   // { cycle: { payer: { total, statusCounts: {status: count} } } }
@@ -827,17 +827,27 @@ function exportFilteredOrders(){
   const gapSheetRows = summary.concat(gapRows.length ? gapRows : [{ 'Issue': 'No order-level mismatch found for this filter' }]);
 
   // ---- Full lists ----
+  // "Found?" tells the truth: an order that exists in the other station but is Returned (excluded from the
+  // counts) or sits under a different Cycle/Payer is NOT shown as "No" any more.
+  function presence(otherIdx, k, otherName){
+    if(otherIdx.cnt[k]) return 'Yes';
+    const rows = otherIdx.all[k];
+    if(!rows || !rows.length) return 'No - not in ' + otherName + ' at all';
+    if(rows.every(function(x){ return x.excluded; })) return 'Exists in ' + otherName + ' but status is excluded (Returned etc.) - not counted';
+    return 'Exists in ' + otherName + ' but under a different Cycle/Payer - not counted here';
+  }
+  function statusesOf(otherIdx, k){
+    return (otherIdx.all[k] || []).map(function(x){
+      return x.status + ((x.cycle !== cycleVal && cycleVal) || (x.payer !== payerVal && payerVal) ? ' [' + x.cycle + ' | ' + x.payer + ']' : '');
+    }).join(' / ');
+  }
   const salesOut = S.filter(function(o){ return o.inFilter; }).map(function(o){
-    const m = cIdx.cnt[o.ref.toLowerCase()];
     return { 'Cycle': o.cycle, 'Payer': o.payer, 'Order Reference': o.ref, 'Sales Status': o.status,
-             'Found in Claim Station?': m ? 'Yes' : 'No',
-             'Claim Stage': m ? whereIs((cIdx.all[o.ref.toLowerCase()] || []).filter(function(x){ return x.inFilter; })).split('  ;  ').map(function(t){ return t.split(' | ')[2]; }).join(' / ') : '' };
+             'In Claim Station?': presence(cIdx, o.ref.toLowerCase(), 'Claim') };
   });
   const claimOut = C.filter(function(o){ return o.inFilter; }).map(function(o){
-    const m = sIdx.cnt[o.ref.toLowerCase()];
     return { 'Cycle': o.cycle, 'Payer': o.payer, 'Sale Order': o.ref, 'Claim Stage': o.status,
-             'Found in Sales Station?': m ? 'Yes' : 'No',
-             'Sales Status': m ? (sIdx.all[o.ref.toLowerCase()] || []).filter(function(x){ return x.inFilter; }).map(function(x){ return x.status; }).join(' / ') : '' };
+             'In Sales Station?': presence(sIdx, o.ref.toLowerCase(), 'Sales') };
   });
 
   if(!salesOut.length && !claimOut.length){ alert('No orders for this filter.'); return; }
