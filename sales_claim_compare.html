@@ -71,6 +71,8 @@
   .filter-apply:hover{background:var(--brand-dark);}
   .filter-clear{border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:9px 14px;font-size:12.5px;cursor:pointer;font-family:inherit;font-weight:600;color:var(--slate);}
   .filter-clear:hover{background:var(--line);}
+  .filter-export{border:1px solid var(--brand);background:var(--paper);color:var(--brand);border-radius:8px;padding:9px 14px;font-size:12.5px;cursor:pointer;font-family:inherit;font-weight:700;}
+  .filter-export:hover{background:var(--brand);color:#fff;}
 
   .single-result{background:var(--ink);color:#fff;border-radius:12px;padding:18px 20px;margin-top:18px;}
   .single-result .sr-title{font-family:'Manrope',sans-serif;font-weight:800;font-size:16px;margin-bottom:10px;}
@@ -175,6 +177,7 @@
       </div>
       <button class="filter-apply" onclick="applyFilters()">Show Result</button>
       <button class="filter-clear" onclick="clearFilters()">Clear Filter</button>
+      <button class="filter-export" onclick="exportFilteredOrders()">Export Filtered Orders (Excel)</button>
     </div>
   </div>
 
@@ -713,6 +716,86 @@ function exportNotReflected(){
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+function exportFilteredOrders(){
+  if(typeof salesData === 'undefined' || !salesData || !claimData){ alert('Data not loaded yet.'); return; }
+  const cycleVal = document.getElementById('cycleFilter').value;
+  const payerVal = document.getElementById('payerFilter').value;
+  const sCycleCol = document.getElementById('salesCycleCol').value;
+  const sPayerCol = document.getElementById('salesPayerCol').value;
+  const sStatusCol = document.getElementById('salesStatusCol').value;
+  const sOrderCol = document.getElementById('salesOrderCol').value;
+  const cCycleCol = document.getElementById('claimCycleCol').value;
+  const cPayerCol = document.getElementById('claimPayerCol').value;
+  const cStatusCol = document.getElementById('claimStatusCol').value;
+  const cOrderCol = document.getElementById('claimOrderCol').value;
+
+  function norm(v, dflt){ const t = String(v == null ? '' : v).trim(); return t || dflt; }
+
+  // Lookup sets/maps so each order can be checked against the other station
+  const claimByOrder = {};
+  claimData.forEach(function(r){
+    const k = norm(r[cOrderCol], '').toLowerCase();
+    if(!k) return;
+    const st = norm(r[cStatusCol], 'Unknown');
+    if(!claimByOrder[k]) claimByOrder[k] = [];
+    if(claimByOrder[k].indexOf(st) === -1) claimByOrder[k].push(st);
+  });
+  const salesByOrder = {};
+  salesData.forEach(function(r){
+    const k = norm(r[sOrderCol], '').toLowerCase();
+    if(!k) return;
+    const st = norm(r[sStatusCol], 'Unknown');
+    if(!salesByOrder[k]) salesByOrder[k] = [];
+    if(salesByOrder[k].indexOf(st) === -1) salesByOrder[k].push(st);
+  });
+
+  // Same rules as the cards: excluded statuses are skipped, so counts match what you see on screen
+  function pick(rows, cycleCol, payerCol, statusCol){
+    return rows.filter(function(r){
+      const status = norm(r[statusCol], 'Unknown');
+      if(EXCLUDED_STATUSES.has(status.toLowerCase())) return false;
+      if(cycleVal && norm(r[cycleCol], 'Unspecified') !== cycleVal) return false;
+      if(payerVal && norm(r[payerCol], 'Unspecified') !== payerVal) return false;
+      return true;
+    });
+  }
+
+  const salesOut = pick(salesData, sCycleCol, sPayerCol, sStatusCol).map(function(r){
+    const ref = norm(r[sOrderCol], '');
+    const match = claimByOrder[ref.toLowerCase()];
+    return {
+      'Cycle': norm(r[sCycleCol], 'Unspecified'),
+      'Payer': norm(r[sPayerCol], 'Unspecified'),
+      'Order Reference': ref,
+      'Sales Status': norm(r[sStatusCol], 'Unknown'),
+      'Found in Claim Station?': match ? 'Yes' : 'No',
+      'Claim Stage': match ? match.join(' / ') : ''
+    };
+  });
+
+  const claimOut = pick(claimData, cCycleCol, cPayerCol, cStatusCol).map(function(r){
+    const ref = norm(r[cOrderCol], '');
+    const match = salesByOrder[ref.toLowerCase()];
+    return {
+      'Cycle': norm(r[cCycleCol], 'Unspecified'),
+      'Payer': norm(r[cPayerCol], 'Unspecified'),
+      'Sale Order': ref,
+      'Claim Stage': norm(r[cStatusCol], 'Unknown'),
+      'Found in Sales Station?': match ? 'Yes' : 'No',
+      'Sales Status': match ? match.join(' / ') : ''
+    };
+  });
+
+  if(!salesOut.length && !claimOut.length){ alert('No orders for this filter.'); return; }
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(salesOut), 'Sales Station');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(claimOut), 'Claim Station');
+
+  const label = ((payerVal || 'All companies') + '_' + (cycleVal || 'All cycles')).replace(/[\\/:*?"<>|\s]+/g, '_');
+  XLSX.writeFile(wb, 'orders_' + label + '.xlsx');
 }
 </script>
 </body>
