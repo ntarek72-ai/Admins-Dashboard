@@ -1235,26 +1235,36 @@ async function loadTasks(){
   }
 }
 
+let saveQueued = false;
+
 async function saveTasks(){
-  if(saving) return;
-  saving = true;
-  try{
-    setSyncStatus('Saving...');
-    const res = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(tasks)
-    });
-    if(res.ok){
-      setSyncStatus('Saved just now');
-      lastLocalSaveAt = Date.now();
-    } else {
-      const errBody = await res.text();
-      setSyncStatus('Save failed: HTTP ' + res.status + ' - ' + errBody.slice(0, 150), true);
-    }
-  }catch(e){
-    setSyncStatus('Save error: ' + e.message, true);
+  if(saving){
+    // another save is already in flight - don't drop this change, queue a follow-up save
+    // so it still reaches the server instead of being silently lost on the next auto-refresh
+    saveQueued = true;
+    return;
   }
+  saving = true;
+  do {
+    saveQueued = false;
+    try{
+      setSyncStatus('Saving...');
+      const res = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(tasks)
+      });
+      if(res.ok){
+        setSyncStatus('Saved just now');
+        lastLocalSaveAt = Date.now();
+      } else {
+        const errBody = await res.text();
+        setSyncStatus('Save failed: HTTP ' + res.status + ' - ' + errBody.slice(0, 150), true);
+      }
+    }catch(e){
+      setSyncStatus('Save error: ' + e.message, true);
+    }
+  } while(saveQueued);
   saving = false;
 }
 
