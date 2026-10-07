@@ -64,6 +64,11 @@
   .stats{display:flex;gap:28px;flex-wrap:wrap;margin:0 0 14px}
   .stat b{display:block;font-family:var(--display);font-size:26px;line-height:1.1}
   .stat span{font-size:13px;color:var(--muted)}
+  button.stat{background:none;border:0;border-bottom:2px solid transparent;padding:0 0 4px;margin:0;font:inherit;text-align:left;cursor:pointer;color:inherit}
+  button.stat:hover span{color:var(--ink);text-decoration:underline}
+  button.stat.on{border-bottom-color:currentColor}
+  .status-chip{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#FFF1DC;border:1px solid #F2CF98;color:#8A4B06;border-radius:10px;padding:8px 12px;margin:0 0 10px;font-size:13px}
+  .status-chip button{background:none;border:0;color:inherit;font:inherit;font-weight:700;text-decoration:underline;cursor:pointer;padding:0}
   .stat.open b{color:var(--ink)} .stat.sent b{color:var(--amber)} .stat.recv b{color:var(--teal)} .stat.done b{color:var(--slate)}
   .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line-strong);overflow-x:auto}
   .tab{border:0;background:none;padding:10px 14px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;white-space:nowrap}
@@ -217,6 +222,7 @@
       <button class="btn quiet" id="fDateClear" type="button" style="display:none">Clear date</button>
     </div>
 
+    <div class="status-chip hidden" id="statusChip"></div>
     <main id="list" aria-live="polite"></main>
   </div>
 </div>
@@ -253,7 +259,7 @@ const CRED_KEY = 'ticket-handover-cred';
 const SNAP_KEY = 'ticket-handover-snapshot-';
 
 /* ===================== STATE ===================== */
-const S = { retail:'', date:'', otype:'', usage:null, loading:false, lastOk:'', preview:false, busy:0, notify:false, cred:null, me:null, users:[], tickets:[], events:[], tab:'inbox', q:'', company:'', pharmacy:'', holder:'', open:null, timer:null };
+const S = { status:'', retail:'', date:'', otype:'', usage:null, loading:false, lastOk:'', preview:false, busy:0, notify:false, cred:null, me:null, users:[], tickets:[], events:[], tab:'inbox', q:'', company:'', pharmacy:'', holder:'', open:null, timer:null };
 const $ = function(s){ return document.querySelector(s); };
 
 /* ===================== HELPERS ===================== */
@@ -488,8 +494,9 @@ const TABS = [
     fn:function(t){ return t.status === 'Sent' && t.holder === S.me.email; } },
   { id:'mine',    label:'With me',          count:true, empty:['You are not holding any ticket','Confirmed tickets that are still open with you appear here.'],
     fn:function(t){ return t.status === 'Received' && t.holder === S.me.email; } },
-  { id:'waiting', label:'Waiting on others',count:true, empty:['Nothing is waiting on someone else','Tickets you sent that are not confirmed yet appear here.'],
-    fn:function(t){ const h = lastHop(t); return t.status === 'Sent' && t.holder !== S.me.email && h && h.from === S.me.email; } },
+  { id:'waiting', label:'Waiting on others',count:true, empty:['Nothing is waiting on someone else','Tickets sent to someone and not confirmed yet appear here.'],
+    // An admin sees every ticket that is waiting for someone to confirm; everybody else sees only the ones they sent.
+    fn:function(t){ if(t.status !== 'Sent' || t.holder === S.me.email) return false; if(S.me.admin) return true; const h = lastHop(t); return !!(h && h.from === S.me.email); } },
   { id:'open',    label:'All open',         count:true, empty:['No open tickets','Every ticket is resolved.'],
     fn:function(t){ return t.status !== 'Resolved'; } },
   { id:'done',    label:'Resolved',         count:true, empty:['No resolved tickets yet','Submitted tickets are kept here.'],
@@ -559,7 +566,12 @@ function renderStats(){
     ['recv', n(function(t){ return t.status === 'Received'; }), 'Being worked on'],
     ['done', n(function(t){ return t.status === 'Resolved'; }), 'Resolved']
   ];
-  $('#stats').innerHTML = items.map(function(i){ return '<div class="stat ' + i[0] + '"><b>' + i[1] + '</b><span>' + i[2] + '</span></div>'; }).join('');
+  // Each number is a button: it opens exactly the tickets it counts (the whole team's, whoever holds them).
+  const isOn = function(k){ return (k === 'open' && S.tab === 'open' && !S.status) || (k === 'sent' && S.tab === 'open' && S.status === 'Sent') ||
+                                   (k === 'recv' && S.tab === 'open' && S.status === 'Received') || (k === 'done' && S.tab === 'done'); };
+  $('#stats').innerHTML = items.map(function(i){
+    return '<button type="button" class="stat ' + i[0] + (isOn(i[0]) ? ' on' : '') + '" data-stat="' + i[0] + '" title="Show these tickets"><b>' + i[1] + '</b><span>' + i[2] + '</span></button>';
+  }).join('');
 }
 
 function render(){
@@ -574,11 +586,17 @@ function render(){
   }).join('');
 
   const tb = TABS.filter(function(x){ return x.id === S.tab; })[0];
-  let rows = S.tickets.filter(tb.fn).filter(passesFilters);
+  if(S.status && S.tab !== 'open') S.status = '';
+  let rows = S.tickets.filter(tb.fn).filter(function(t){ return !S.status || t.status === S.status; }).filter(passesFilters);
+  const chip = $('#statusChip');
+  if(S.status){
+    chip.innerHTML = 'Showing every ticket in the team that is ' + (S.status === 'Sent' ? 'waiting to be confirmed' : 'being worked on') + ' (' + rows.length + ') <button type="button" id="statusClear">Show all open</button>';
+    chip.classList.remove('hidden');
+  } else chip.classList.add('hidden');
   rows.sort(function(a,b){ return tb.id === 'inbox' ? (a.updatedAt < b.updatedAt ? -1 : 1) : (a.updatedAt < b.updatedAt ? 1 : -1); });
 
   if(!rows.length){
-    const filtered = S.q || S.company || S.pharmacy || S.holder || S.otype || S.date || S.retail;
+    const filtered = S.status || S.q || S.company || S.pharmacy || S.holder || S.otype || S.date || S.retail;
     $('#list').innerHTML = '<div class="empty"><b>' + esc(filtered ? 'No tickets match these filters' : tb.empty[0]) + '</b>' +
       esc(filtered ? 'Clear the search or filters to see more.' : tb.empty[1]) + '</div>';
     return;
@@ -1128,7 +1146,15 @@ $('#notifyToggle').addEventListener('change', async function(e){
   catch(err){ e.target.checked = !want; if(err.code === 'AUTH'){ signOut(); return; } toast(err.message); }
   e.target.disabled = false;
 });
-$('#tabs').addEventListener('click', function(e){ const b = e.target.closest('[data-tab]'); if(b){ S.tab = b.dataset.tab; fillFilters(); render(); } });
+$('#tabs').addEventListener('click', function(e){ const b = e.target.closest('[data-tab]'); if(b){ S.tab = b.dataset.tab; S.status = ''; fillFilters(); render(); } });
+$('#stats').addEventListener('click', function(e){
+  const b = e.target.closest('[data-stat]'); if(!b) return;
+  const k = b.dataset.stat;
+  S.tab = (k === 'done') ? 'done' : 'open';
+  S.status = (k === 'sent') ? 'Sent' : (k === 'recv') ? 'Received' : '';
+  fillFilters(); render();
+});
+$('#statusChip').addEventListener('click', function(e){ if(e.target.id === 'statusClear'){ S.status = ''; fillFilters(); render(); } });
 $('#q').addEventListener('input', function(e){ S.q = e.target.value.trim(); render(); });
 $('#fCompany').addEventListener('change', function(e){ S.company = e.target.value; render(); });
 $('#fPharmacy').addEventListener('change', function(e){ S.pharmacy = e.target.value; render(); });
