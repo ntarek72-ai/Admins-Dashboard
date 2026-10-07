@@ -624,7 +624,7 @@ function lastComment(t){
 
 function retailLine(t){
   if(!t.retailIssueId && t.retailStatus !== 'Sending') return '';
-  if(t.retailStatus === 'Sending' && !t.retailIssueId) return 'Retail Issue Tracker: not confirmed yet, checking automatically. You can press Send again safely.';
+  if(t.retailStatus === 'Sending') return 'Retail Issue Tracker: not confirmed yet, checking automatically. You can press Send again safely.';
   if(t.retailStatus === 'Answered') return 'Retail Issue Tracker: Mohamed Sayed resolved it. Verify, then Submit';
   if(t.retailStatus === 'Resolved') return 'Retail Issue Tracker: resolved there too';
   if(t.status === 'Resolved') return 'Retail Issue Tracker: still open there';
@@ -675,6 +675,7 @@ function eventCore(e, a, b){
     case 'reopen':  return a + ' reopened it and sent it to ' + b;
     case 'receive': return a + ' confirmed receipt';
     case 'retail':  return a + ' sent it to the Retail Issue Tracker (assigned to Mohamed Sayed)';
+    case 'retail_again': return a + ' sent it to the Retail Issue Tracker again, it was still not solved (assigned to Mohamed Sayed)';
     case 'comment': return a + ' added a comment';
     case 'type':    return a + ' changed the order type';
     case 'edit':    return a + ' edited the ticket';
@@ -704,7 +705,8 @@ function actionsCore(t){
     return '<span class="hint">' + (t.status === 'Sent' ? 'Waiting for ' + esc(nameOf(t.holder)) + ' to confirm receipt.' : esc(nameOf(t.holder)) + ' is working on it.') + '</span>';
   }
   if(t.status === 'Sent') return '<button class="btn good" data-act="receive" data-id="' + id + '">Confirm receipt</button><button class="btn" data-act="resend" data-id="' + id + '">Resend</button>' + proxyHint;
-  const retailBtn = t.retailIssueId ? '' : '<button class="btn" data-act="retail" data-id="' + id + '">Send to Retail Tracker</button>';
+  const retailBtn = !t.retailIssueId ? '<button class="btn" data-act="retail" data-id="' + id + '">Send to Retail Tracker</button>'
+    : (t.retailStatus === 'Answered' ? '<button class="btn" data-act="retail" data-id="' + id + '">Send to Retail Tracker again</button>' : '');
   return '<button class="btn good" data-act="resolve" data-id="' + id + '">Submit</button><button class="btn" data-act="comment" data-id="' + id + '">Add comment</button>' + retailBtn + '<button class="btn" data-act="resend" data-id="' + id + '">Resend</button>' + proxyHint;
 }
 
@@ -915,9 +917,12 @@ function actionDialog(kind, id){
       fields.push({ name:'resolutionNote', label:'Resolution note', type:'textarea', value:(t.resolutionNote || '') });
     }
     // Admin only: send the ticket to the Retail Issue Tracker from here (for when the person who opened it forgot).
-    const canSendRetail = !t.retailIssueId && t.status !== 'Resolved';
+    const sendAgain = !!t.retailIssueId && t.retailStatus === 'Answered';
+    const canSendRetail = (!t.retailIssueId || sendAgain) && t.status !== 'Resolved';
     if(canSendRetail){
-      fields.push({ name:'retailComment', label:'Send to Retail Tracker: comment for Mohamed Sayed (leave empty to NOT send)', type:'textarea', placeholder:(lastComment(t) || t.issue || '') });
+      fields.push(sendAgain
+        ? { name:'retailComment', label:'Send to Retail Tracker AGAIN, what is still wrong? Mohamed Sayed will see this (leave empty to NOT send)', type:'textarea', placeholder:'For example: the quantity is still not corrected' }
+        : { name:'retailComment', label:'Send to Retail Tracker: comment for Mohamed Sayed (leave empty to NOT send)', type:'textarea', placeholder:(lastComment(t) || t.issue || '') });
     }
     ask({
       title:'Edit ' + t.orderNumber, intro:'Fix what is wrong. Who holds the ticket and its status do not change, and every change is written in the history.', confirm:'Save changes', fields:fields,
@@ -930,7 +935,7 @@ function actionDialog(kind, id){
         applyPatch(d);
         if(retailComment){
           d = await api('sendToRetail', { id:id, comment:retailComment });
-          toast('Confirmed: the issue was created in the Retail Issue Tracker and assigned to Mohamed Sayed.', 9000);
+          toast(sendAgain ? 'Confirmed: a new issue was created in the Retail Issue Tracker for Mohamed Sayed.' : 'Confirmed: the issue was created in the Retail Issue Tracker and assigned to Mohamed Sayed.', 9000);
           applyPatch(d);
         }
       }
@@ -957,13 +962,20 @@ function actionDialog(kind, id){
     fields:[ { name:'comment', label:'Comment', type:'textarea', required:true, placeholder:'For example: the item was not dispensed, sent to Mohamed Sayed on the Retail Issue Tracker' } ],
     run:async function(v){ const d = await api('comment', { id:id, comment:v.comment }); toast('Comment saved'); applyPatch(d); }
   });
-  if(kind === 'retail') ask({
-    title:'Send ' + t.orderNumber + ' to Retail Tracker', intro:'This opens an issue in the Retail Issue Tracker, assigned to Mohamed Sayed, with the same order, company and pharmacy. You can edit the comment he will see.', confirm:'Create in Retail Tracker',
+  if(kind === 'retail'){
+    const again = !!t.retailIssueId;
+    ask({
+    title:(again ? 'Send ' + t.orderNumber + ' to Retail Tracker again' : 'Send ' + t.orderNumber + ' to Retail Tracker'),
+    intro:(again ? 'Use this when Mohamed Sayed answered but the problem is still there. It opens a NEW issue for him with the same order, company and pharmacy. The earlier one stays in the history. Tell him what is still wrong.'
+                 : 'This opens an issue in the Retail Issue Tracker, assigned to Mohamed Sayed, with the same order, company and pharmacy. You can edit the comment he will see.'),
+    confirm:'Create in Retail Tracker',
     savingLabel:'Creating in Retail Tracker…', busyNote:'Creating the issue in the Retail Issue Tracker. This can take up to a minute. Keep this window open.',
     unclearMessage:'No answer yet from the Retail Issue Tracker. Nothing is lost and it will not be duplicated: it is checked automatically, or press the button again.',
-    fields:[ { name:'comment', label:'Comment for Mohamed Sayed', type:'textarea', required:true, value:(lastComment(t) || t.issue || '') } ],
+    fields:[ again ? { name:'comment', label:'What is still wrong? Mohamed Sayed will see this', type:'textarea', required:true, placeholder:'For example: the quantity is still not corrected' }
+                   : { name:'comment', label:'Comment for Mohamed Sayed', type:'textarea', required:true, value:(lastComment(t) || t.issue || '') } ],
     run:async function(v){ const d = await api('sendToRetail', { id:id, comment:v.comment }); toast('Confirmed: the issue was created in the Retail Issue Tracker and assigned to Mohamed Sayed.', 9000); applyPatch(d); }
-  });
+    });
+  }
   if(kind === 'resolve'){
     const answered = t.retailStatus === 'Answered', stillOpen = t.retailIssueId && t.retailStatus === 'Open';
     ask({
@@ -997,7 +1009,7 @@ function stamp(iso){
 function plainEvent(e){
   const a = nameOf(e.from), b = nameOf(e.to), by = (e.by && e.by !== e.from && e.kind !== 'create' && e.kind !== 'reopen') ? ' (by ' + nameOf(e.by) + ')' : '';
   const t = { create:a + ' opened and sent to ' + b, resend:a + ' resent to ' + b, reopen:a + ' reopened and sent to ' + b,
-              receive:a + ' confirmed receipt', retail:a + ' sent to the Retail Issue Tracker', comment:a + ' commented', edit:a + ' edited the ticket', type:a + ' changed the order type', edit:a + ' edited the ticket', retail_link:'Linked to an issue in the Retail Issue Tracker', retail_done:'Mohamed Sayed resolved it in the Retail Issue Tracker', resolve:a + ' submitted as resolved' }[e.kind] || e.kind;
+              receive:a + ' confirmed receipt', retail:a + ' sent to the Retail Issue Tracker', retail_again:a + ' sent to the Retail Issue Tracker again', comment:a + ' commented', edit:a + ' edited the ticket', type:a + ' changed the order type', edit:a + ' edited the ticket', retail_link:'Linked to an issue in the Retail Issue Tracker', retail_done:'Mohamed Sayed resolved it in the Retail Issue Tracker', resolve:a + ' submitted as resolved' }[e.kind] || e.kind;
   return t + by + (e.note ? ' - ' + e.note : '');
 }
 function exportCSV(){
