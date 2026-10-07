@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claims Templates</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#F4F4F1;color:#14181F;font-family:'Manrope',system-ui,sans-serif}
+a{text-decoration:none;color:inherit}
+.wrap{max-width:1160px;margin:0 auto;padding:28px 24px 72px;display:flex;flex-direction:column;gap:56px}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:12px;font-size:18px;font-weight:700;letter-spacing:-.01em}
+.logo{width:40px;height:40px;border-radius:12px;background:#14181F;display:flex;align-items:center;justify-content:center}
+h1{margin:0;font-size:clamp(40px,7vw,64px);line-height:1.02;font-weight:800;letter-spacing:-.03em}
+h2{margin:0;font-size:28px;font-weight:800;letter-spacing:-.02em}
+.sub{margin:16px 0 0;font-size:19px;line-height:1.6;color:#4B5560;max-width:560px}
+.finder{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;margin-top:28px}
+.label{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#4B5560;margin-bottom:8px}
+.selwrap{flex:1 1 340px;max-width:460px;min-width:0}
+select{width:100%;min-height:60px;padding:0 20px;font:600 17px 'Manrope',system-ui,sans-serif;color:#14181F;background:#fff;border:2px solid #14181F;border-radius:18px;cursor:pointer}
+select:focus-visible,.btn:focus-visible{outline:3px solid #14181F;outline-offset:2px}
+.panel{flex:2 1 420px;min-width:0;margin-top:29px}
+.hint{min-height:60px;padding:18px 22px;border:2px dashed #C3C9CF;border-radius:18px;font-size:16px;color:#5B6671;display:flex;align-items:center}
+.card{background:#fff;border:1px solid #D5DADF;border-radius:22px;padding:22px 24px;display:flex;flex-direction:column;gap:16px}
+.card .name{font-size:24px;font-weight:800;letter-spacing:-.01em}
+.card .desc{font-size:15px;line-height:1.6;color:#4B5560;margin-top:6px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 0;border-top:1px solid #E4E8EB}
+.row:first-child{border-top:0;padding-top:0}
+.row b{font-size:16px}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:0 20px;border-radius:999px;font:700 15px 'Manrope',system-ui,sans-serif;border:2px solid #14181F;cursor:pointer}
+.btn.solid{background:#14181F;color:#fff}
+.btn.ghost{background:transparent;color:#14181F}
+.btn:hover{filter:brightness(.93)}
+.chip{align-self:flex-start;padding:8px 14px;border-radius:999px;background:#FFF1D6;color:#7A4B00;font-size:14px;font-weight:700}
+.tiles{display:flex;flex-wrap:wrap;gap:20px;margin-top:20px}
+.tile{flex:1 1 300px;min-width:0;min-height:320px;position:relative;overflow:hidden;border-radius:28px;padding:32px;display:flex;flex-direction:column;justify-content:space-between;gap:28px}
+.tile.wide{flex:2 1 560px;min-height:360px}
+.tile .big{position:absolute;top:-34px;right:20px;font-size:230px;line-height:1;font-weight:800;letter-spacing:-.05em;pointer-events:none}
+.tile .in{position:relative;display:flex;flex-direction:column;gap:10px}
+.tile .tag{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.tile h3{margin:0;font-size:34px;line-height:1.05;font-weight:800;letter-spacing:-.02em}
+.tile p{margin:0;font-size:16px;line-height:1.6}
+.pills{position:relative;display:flex;flex-wrap:wrap;gap:12px}
+.pill{display:flex;align-items:center;gap:6px;background:#fff;color:#14181F;border-radius:999px;padding:6px 6px 6px 18px;font-size:15px;font-weight:700}
+.pill span{margin-right:6px}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:999px;background:#14181F;color:#fff}
+.ib.light{background:#E3E7EA;color:#14181F}
+.soon{border:2px dashed #B7BEC5;background:transparent}
+.steps{display:flex;flex-wrap:wrap;gap:20px;margin-top:24px}
+.step{flex:1 1 260px;min-width:0;padding-top:18px;border-top:3px solid #14181F}
+.step small{font-size:14px;font-weight:700;color:#5B6671}
+.step div{font-size:20px;font-weight:700;margin:10px 0}
+.step p{margin:0;font-size:15px;line-height:1.6;color:#4B5560}
+.note{font-size:13px;color:#5B6671;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar" id="top">
+    <div class="brand"><div class="logo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 10h16"/><path d="M10 10v10"/></svg></div>Claims Templates</div>
+    <a href="#howto" style="font-size:15px;font-weight:600;padding:10px 4px">How it works</a>
+  </div>
+
+  <section>
+    <h1>Every claims template.<br>One place.</h1>
+    <p class="sub">Pick a company, preview its template online, then download a fresh copy to work on.</p>
+    <div class="finder">
+      <div class="selwrap">
+        <div class="label"><label for="company">Find a company</label></div>
+        <select id="company"></select>
+      </div>
+      <div class="panel" id="panel"></div>
+    </div>
+  </section>
+
+  <section>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <h2>Quick access</h2>
+      <div style="font-size:15px;color:#5B6671">More companies are in the list above.</div>
+    </div>
+    <div class="tiles" id="tiles"></div>
+  </section>
+
+  <section id="howto">
+    <h2>How it works</h2>
+    <div class="steps">
+      <div class="step"><small>01</small><div>Pick your company</div><p>Use the list or a quick-access tile, then open the template online to see how it looks.</p></div>
+      <div class="step"><small>02</small><div>Download a fresh copy</div><p>Always work on your own download each month. Never edit the original.</p></div>
+      <div class="step"><small>03</small><div>Paste, then check STATUS</div><p>Paste the data into PERLINE (blue columns only). The STATUS cell must say OK.</p></div>
+    </div>
+  </section>
+</div>
+
+<script>
+/* ============================================================
+   EDIT HERE: one entry per company.
+   - file names are relative to this page (same folder on GitHub)
+   - featured:true  -> shows as a big tile in "Quick access"
+   - soon:true      -> shows "Coming soon" (no files yet)
+   The dropdown is sorted A-Z automatically.
+   ============================================================ */
+const COMPANIES = [
+  { name: 'Ain Shams', featured: true, soon: true, tag: 'Coming soon', desc: 'Template will appear here once the sheet is ready.', files: [] },
+  { name: 'El Tawoon', featured: true, wide: true, tag: '3 branches', desc: 'One template per branch: invoice list, claim statements and totals fill themselves from the PERLINE.', files: [
+      { label: 'Qebly', full: 'Qebly (Keply)', file: 'EL_Tawoon_Keply_Template.xlsx' },
+      { label: 'Suez',  full: 'Suez (Swiss)',  file: 'EL_Tawoon_Swiss_Template.xlsx' },
+      { label: 'Bahary', full: 'Bahary',       file: 'EL_Tawoon_Bahary_Template.xlsx' } ] },
+  { name: 'EMC', featured: true, tag: 'Cycles · Daily · Pensioners', desc: 'Tabs split automatically by cycle, Daily and Pensioners.', files: [ { label: 'EMC', full: 'EMC', file: 'EMC_Template.xlsx' } ] },
+  { name: 'Misr Health Care (MHC)', short: 'Misr Health Care', featured: true, tag: 'Full Match · Not Match', desc: 'Two parts, each with its own Per Line and Per Invoice.', files: [ { label: 'MHC', full: 'MHC', file: 'MHC_Template.xlsx' } ] },
+  { name: 'Nasr Mining', desc: 'Per Line and Per Invoice. Paste the month data into Per Line and Per Invoice fills itself.', files: [ { label: 'Nasr Mining', full: 'Nasr Mining', file: 'Nasr-Mining_Template.xlsx' } ] }
+];
+/* ============================================================ */
+
+const PALETTE = [
+  { bg: '#0E4F4A', fg: '#fff',    sub: '#D3EEEA', tag: '#A8DDD6', big: '#167068' },
+  { bg: '#D8EEE2', fg: '#14181F', sub: '#2D4A3D', tag: '#2F6B52', big: '#C3E4D3' },
+  { bg: '#E4E1FA', fg: '#14181F', sub: '#35305F', tag: '#4B3FA3', big: '#D5D0F5' },
+  { bg: '#FCE3D3', fg: '#14181F', sub: '#5A3320', tag: '#9A4A1E', big: '#F6D2BC' }
+];
+const ICON_OPEN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>';
+const ICON_DL = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/></svg>';
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const abs = (file) => { try { return new URL(encodeURI(file), location.href).href; } catch (e) { return encodeURI(file); } };
+const downloadHref = (file) => encodeURI(file);
+const onlineHref = (file) => 'https://view.officeapps.live.com/op/view.aspx?src=' + encodeURIComponent(abs(file));
+
+const sorted = COMPANIES.slice().sort((a, b) => a.name.localeCompare(b.name));
+const sel = document.getElementById('company');
+sel.innerHTML = '<option value="">Select a company</option>' + sorted.map((c, i) =>
+  `<option value="${i}">${esc(c.name)}${c.soon ? ' (coming soon)' : ''}</option>`).join('');
+
+function openBtn(f, cls) { return `<a class="btn ${cls || 'solid'}" href="${onlineHref(f.file)}" target="_blank" rel="noopener">${ICON_OPEN}Open online</a>`; }
+function dlBtn(f, cls) { return `<a class="btn ${cls || 'ghost'}" href="${downloadHref(f.file)}" download>${ICON_DL}Download</a>`; }
+
+function renderPanel() {
+  const panel = document.getElementById('panel');
+  if (sel.value === '') { panel.innerHTML = '<div class="hint">Choose a company from the list to see its template.</div>'; return; }
+  const c = sorted[Number(sel.value)];
+  let body = '';
+  if (c.soon) body = '<div class="chip">Template coming soon</div>';
+  else body = '<div>' + c.files.map((f) => `<div class="row"><b>${c.files.length > 1 ? esc(f.full) : 'Template'}</b><div class="btns">${openBtn(f)}${dlBtn(f)}</div></div>`).join('') + '</div>';
+  panel.innerHTML = `<div class="card"><div><div class="name">${esc(c.name)}</div><div class="desc">${esc(c.desc)}</div></div>${body}</div>`;
+}
+sel.addEventListener('change', renderPanel);
+renderPanel();
+
+const tiles = document.getElementById('tiles');
+let k = 0;
+tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
+  if (c.soon) {
+    return `<div class="tile soon"><div class="in"><div class="chip">Coming soon</div><h3>${esc(c.short || c.name)}</h3><p style="color:#4B5560">${esc(c.desc)}</p></div></div>`;
+  }
+  const p = PALETTE[k++ % PALETTE.length];
+  let actions;
+  if (c.files.length > 1) {
+    actions = '<div class="pills">' + c.files.map((f) => `<div class="pill"><span>${esc(f.label)}</span><a class="ib" href="${onlineHref(f.file)}" target="_blank" rel="noopener" aria-label="Open ${esc(f.full)} online">${ICON_OPEN}</a><a class="ib light" href="${downloadHref(f.file)}" download aria-label="Download ${esc(f.full)}">${ICON_DL}</a></div>`).join('') + '</div>';
+  } else {
+    const f = c.files[0];
+    actions = `<div class="pills">${openBtn(f)}<a class="btn" style="border-color:${p.fg};color:${p.fg}" href="${downloadHref(f.file)}" download>${ICON_DL}Download</a></div>`;
+    actions = actions.replace('class="btn solid"', `class="btn" style="background:${p.fg};color:${p.bg};border-color:${p.fg}"`);
+  }
+  return `<div class="tile${c.wide ? ' wide' : ''}" style="background:${p.bg};color:${p.fg}"><div class="big" aria-hidden="true" style="color:${p.big}">${esc((c.short || c.name).replace(/^El\s+/, '').charAt(0))}</div><div class="in"><div class="tag" style="color:${p.tag}">${esc(c.tag || '')}</div><h3>${esc(c.short || c.name)}</h3><p style="color:${p.sub}">${esc(c.desc)}</p></div>${actions}</div>`;
+}).join('');
+</script>
+</body>
+</html>
