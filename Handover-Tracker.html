@@ -306,7 +306,7 @@ async function apiOnce(action, payload){
   if(CONFIG.APPS_SCRIPT_URL.indexOf('PASTE') === 0) throw new Error('Set APPS_SCRIPT_URL at the top of this file first.');
   const body = Object.assign({ action:action, email:S.cred.email, password:S.cred.pw }, payload || {});
   // Anything that may talk to the Retail Issue Tracker or upload a file over the network gets more time.
-  const slow = action === 'sendToRetail' || (action === 'create' && payload && (payload.alsoRetail || payload.attachmentData));
+  const slow = action === 'sendToRetail' || action === 'editTicket' || (action === 'create' && payload && (payload.alsoRetail || payload.attachmentData || (payload.attachments && payload.attachments.length)));
   const limit = slow ? 75000 : 30000;
   let res, raw;
   const t0 = Date.now();
@@ -503,6 +503,17 @@ const TABS = [
     fn:function(t){ return t.status === 'Resolved'; } }
 ];
 
+function attachmentsOf(t){
+  if(Array.isArray(t.attachments) && t.attachments.length) return t.attachments;
+  return t.attachmentUrl ? [{ url:t.attachmentUrl, name:t.attachmentName }] : [];
+}
+function attachmentsHTML(t){
+  const list = attachmentsOf(t);
+  if(!list.length) return '';
+  return '<dt>' + (list.length > 1 ? 'Attachments (' + list.length + ')' : 'Attachment') + '</dt><dd>' +
+    list.map(function(a){ return '<a href="' + esc(a.url) + '" target="_blank" rel="noopener">\uD83D\uDCCE ' + esc(a.name || 'View attachment') + '</a>'; }).join('<br>') + '</dd>';
+}
+
 function fillFilters(){
   const cs = {}, ps = {}, hs = {}, os = {}, rs = {};
   const tb = TABS.filter(function(x){ return x.id === S.tab; })[0];
@@ -694,6 +705,7 @@ function eventCore(e, a, b){
     case 'receive': return a + ' confirmed receipt';
     case 'retail':  return a + ' sent it to the Retail Issue Tracker (assigned to Mohamed Sayed)';
     case 'retail_again': return a + ' sent it to the Retail Issue Tracker again, it was still not solved (assigned to Mohamed Sayed)';
+    case 'retail_edit': return 'The correction was also applied to the issue in the Retail Issue Tracker';
     case 'comment': return a + ' added a comment';
     case 'type':    return a + ' changed the order type';
     case 'edit':    return a + ' edited the ticket';
@@ -738,7 +750,7 @@ function detailHTML(t){
       '<h3>Ticket</h3><dl class="kv">' +
         '<dt>Order</dt><dd>' + esc(t.orderNumber) + '</dd>' +
         '<dt>Order type</dt><dd>' + esc(t.orderType || 'Not set') + '</dd>' +
-        (t.attachmentUrl ? '<dt>Attachment</dt><dd><a href="' + esc(t.attachmentUrl) + '" target="_blank" rel="noopener">\uD83D\uDCCE ' + esc(t.attachmentName || 'View attachment') + '</a></dd>' : '') +
+        attachmentsHTML(t) +
         '<dt>Company</dt><dd>' + esc(t.company || '-') + '</dd>' +
         '<dt>Pharmacy</dt><dd>' + esc(t.pharmacy || '-') + '</dd>' +
         '<dt>Cycle</dt><dd>' + esc(t.cycle || '-') + '</dd>' +
@@ -822,7 +834,45 @@ function others(){
     .sort(function(a,b){ return a.label.localeCompare(b.label); });
 }
 
-const ATTACHMENT_MAX_BYTES = 8 * 1024 * 1024;
+const ATTACHMENT_MAX_BYTES = 8 * 1024 * 1024;          // per file, after photos are made smaller
+const ATTACHMENT_MAX_COUNT = 6;                         // files per ticket
+const ATTACHMENT_MAX_TOTAL = 24 * 1024 * 1024;          // all files together
+const PHOTO_MAX_RAW_BYTES = 30 * 1024 * 1024;           // a photo may be big when picked: it is shrunk before upload
+const PDF_MAX_BYTES = 8 * 1024 * 1024;
+
+/** Phone photos are 3-8 MB each. Shrinking them (max 1800 px, JPEG) keeps them readable and makes the upload several times faster. */
+function shrinkPhoto_(file){
+  return new Promise(function(resolve){
+    if(!/^image\/(jpeg|png|webp|heic|heif)$/i.test(file.type)) return resolve(null);
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = function(){
+      try{
+        const MAX = 1800, k = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.max(1, Math.round(img.naturalWidth * k)), h = Math.max(1, Math.round(img.naturalHeight * k));
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.drawImage(img, 0, 0, w, h);
+        c.toBlob(function(blob){
+          URL.revokeObjectURL(url);
+          if(!blob || blob.size >= file.size && /jpeg/i.test(file.type)) return resolve(null);   // not smaller: keep the original
+          resolve({ blob: blob, name: file.name.replace(/\.[^.]+$/, '') + '.jpg', type: 'image/jpeg' });
+        }, 'image/jpeg', 0.82);
+      }catch(e){ URL.revokeObjectURL(url); resolve(null); }
+    };
+    img.onerror = function(){ URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
+/** One picked file as { name, mimeType, data(base64), size }, shrunk when it is a photo. */
+async function prepareAttachment_(file){
+  const small = await shrinkPhoto_(file);
+  const blob = small ? small.blob : file;
+  const name = small ? small.name : file.name;
+  const type = small ? small.type : (file.type || 'application/octet-stream');
+  if(blob.size > ATTACHMENT_MAX_BYTES) throw new Error('"' + file.name + '" is too large (max 8 MB). Choose a smaller file.');
+  return { name:name, mimeType:type, data:await readFileAsBase64_(blob), size:blob.size };
+}
+
 function readFileAsBase64_(file){
   return new Promise(function(resolve, reject){
     const reader = new FileReader();
@@ -833,6 +883,7 @@ function readFileAsBase64_(file){
 }
 
 function newTicketDialog(){
+  const picked = [];                                       // the files chosen so far (kept here so each one can be removed)
   const now = new Date(), cur = MONTHS[now.getMonth()] + ' ' + now.getFullYear(), cycles = [];
   for(let y = 2026; y <= 2027; y++) MONTHS.forEach(function(m){ cycles.push(m + ' ' + y); });
   ask({
@@ -848,9 +899,10 @@ function newTicketDialog(){
       { name:'to', label:'Hand to', type:'select', options:others(), required:true, placeholder:'Choose person' }
     ],
     after:'<div class="field">' +
-      '<label class="f">Attach a photo or PDF (optional)</label>' +
-      '<input type="file" id="attachmentInput" accept="image/*,application/pdf" style="width:100%">' +
-      '<div id="attachmentInfo" style="font-size:12px;color:var(--muted);margin-top:4px"></div></div>' +
+      '<label class="f">Attach photos or PDFs (optional, up to ' + ATTACHMENT_MAX_COUNT + ')</label>' +
+      '<input type="file" id="attachmentInput" accept="image/*,application/pdf" multiple style="width:100%">' +
+      '<div id="attachmentList"></div>' +
+      '<div id="attachmentInfo" style="font-size:12px;color:var(--muted);margin-top:4px">You can pick several files at once, or add more one after another.</div></div>' +
       '<div class="field" style="border-top:1px solid var(--line);padding-top:14px;margin-top:4px">' +
       '<label style="display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer">' +
       '<input type="checkbox" id="alsoRetailChk"> Also send to Retail Tracker now</label>' +
@@ -870,17 +922,32 @@ function newTicketDialog(){
         if(hit){ box.textContent = 'This order already has a ticket (' + hit.status + ', ' + fmtWhen(hit.createdAt) + '). Consider resending or reopening it instead of opening a new one.'; box.classList.remove('hidden'); }
         else box.classList.add('hidden');
       });
-      const fileInput = document.getElementById('attachmentInput'), fileInfo = document.getElementById('attachmentInfo');
+      const fileInput = document.getElementById('attachmentInput'), fileInfo = document.getElementById('attachmentInfo'), fileList = document.getElementById('attachmentList');
+      const mb = function(n){ return (n / 1024 / 1024).toFixed(1) + ' MB'; };
+      const showFiles = function(msg, bad){
+        fileList.innerHTML = picked.map(function(f, i){
+          return '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:13px">' +
+            '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">\uD83D\uDCCE ' + esc(f.name) + ' <span style="color:var(--muted)">(' + mb(f.size) + ')</span></span>' +
+            '<button type="button" class="btn quiet" data-rm="' + i + '" style="padding:2px 10px">Remove</button></div>';
+        }).join('');
+        fileInfo.style.color = bad ? 'var(--danger)' : 'var(--muted)';
+        fileInfo.textContent = msg || (picked.length ? picked.length + ' of ' + ATTACHMENT_MAX_COUNT + ' files. Photos are made smaller automatically.' : 'You can pick several files at once, or add more one after another.');
+      };
+      fileList.addEventListener('click', function(e){ const b = e.target.closest('[data-rm]'); if(b){ picked.splice(+b.dataset.rm, 1); showFiles(); } });
       fileInput.addEventListener('change', function(){
-        const f = fileInput.files && fileInput.files[0];
-        if(!f){ fileInfo.textContent = ''; return; }
-        if(f.size > ATTACHMENT_MAX_BYTES){
-          fileInfo.textContent = 'Too large (max 8 MB). Choose a smaller file.'; fileInfo.style.color = 'var(--danger)';
-          fileInput.value = '';
-          return;
-        }
-        fileInfo.style.color = 'var(--muted)';
-        fileInfo.textContent = f.name + ' (' + (f.size / 1024 / 1024).toFixed(1) + ' MB)';
+        const chosen = Array.prototype.slice.call(fileInput.files || []);
+        fileInput.value = '';                              // so the same file can be picked again later
+        let problem = '';
+        chosen.forEach(function(f){
+          if(picked.length >= ATTACHMENT_MAX_COUNT){ problem = 'You can attach up to ' + ATTACHMENT_MAX_COUNT + ' files.'; return; }
+          const isPdf = f.type === 'application/pdf', isImg = /^image\//.test(f.type);
+          if(!isPdf && !isImg){ problem = '"' + f.name + '" is not a photo or a PDF.'; return; }
+          if(isPdf && f.size > PDF_MAX_BYTES){ problem = '"' + f.name + '" is too large (max 8 MB).'; return; }
+          if(isImg && f.size > PHOTO_MAX_RAW_BYTES){ problem = '"' + f.name + '" is too large. Choose a smaller photo.'; return; }
+          if(picked.some(function(x){ return x.name === f.name && x.size === f.size; })) return;   // same file twice
+          picked.push(f);
+        });
+        showFiles(problem, !!problem);
       });
       const chk = document.getElementById('alsoRetailChk'), wrap = document.getElementById('retailCommentWrap'), rc = document.getElementById('retailCommentInput');
       chk.addEventListener('change', function(){
@@ -890,12 +957,12 @@ function newTicketDialog(){
       });
     },
     run:async function(v){
-      const fileInput = document.getElementById('attachmentInput');
-      const file = fileInput && fileInput.files && fileInput.files[0];
-      if(file){
-        v.attachmentName = file.name;
-        v.attachmentMimeType = file.type || 'application/octet-stream';
-        v.attachmentData = await readFileAsBase64_(file);
+      if(picked.length){
+        const prepared = [];
+        for(let i = 0; i < picked.length; i++) prepared.push(await prepareAttachment_(picked[i]));      // one after another: easy on the phone's memory
+        const total = prepared.reduce(function(n, a){ return n + a.size; }, 0);
+        if(total > ATTACHMENT_MAX_TOTAL) throw new Error('The files are too large together (max 24 MB). Remove some or choose smaller ones.');
+        v.attachments = prepared.map(function(a){ return { name:a.name, mimeType:a.mimeType, data:a.data }; });
       }
       const chk = document.getElementById('alsoRetailChk');
       if(chk && chk.checked){
@@ -949,7 +1016,9 @@ function actionDialog(kind, id){
         const retailComment = v.retailComment || '';
         delete v.retailComment;
         let d = await api('editTicket', { id:id, fields:v });
-        toast('Ticket updated');
+        const lastEv = (d.events || []).slice(-1)[0];
+        toast(d.ticket && d.ticket.retailEditPending ? 'Ticket updated here. The Retail Tracker did not answer, so it will be updated there automatically in a few minutes.'
+            : (lastEv && lastEv.kind === 'retail_edit' ? 'Ticket updated here and in the Retail Tracker' : 'Ticket updated'), 7000);
         applyPatch(d);
         if(retailComment){
           d = await api('sendToRetail', { id:id, comment:retailComment });
@@ -1027,7 +1096,7 @@ function stamp(iso){
 function plainEvent(e){
   const a = nameOf(e.from), b = nameOf(e.to), by = (e.by && e.by !== e.from && e.kind !== 'create' && e.kind !== 'reopen') ? ' (by ' + nameOf(e.by) + ')' : '';
   const t = { create:a + ' opened and sent to ' + b, resend:a + ' resent to ' + b, reopen:a + ' reopened and sent to ' + b,
-              receive:a + ' confirmed receipt', retail:a + ' sent to the Retail Issue Tracker', retail_again:a + ' sent to the Retail Issue Tracker again', comment:a + ' commented', edit:a + ' edited the ticket', type:a + ' changed the order type', edit:a + ' edited the ticket', retail_link:'Linked to an issue in the Retail Issue Tracker', retail_done:'Mohamed Sayed resolved it in the Retail Issue Tracker', resolve:a + ' submitted as resolved' }[e.kind] || e.kind;
+              receive:a + ' confirmed receipt', retail:a + ' sent to the Retail Issue Tracker', retail_again:a + ' sent to the Retail Issue Tracker again', retail_edit:'Correction applied in the Retail Issue Tracker', comment:a + ' commented', edit:a + ' edited the ticket', type:a + ' changed the order type', edit:a + ' edited the ticket', retail_link:'Linked to an issue in the Retail Issue Tracker', retail_done:'Mohamed Sayed resolved it in the Retail Issue Tracker', resolve:a + ' submitted as resolved' }[e.kind] || e.kind;
   return t + by + (e.note ? ' - ' + e.note : '');
 }
 function exportCSV(){
@@ -1038,7 +1107,7 @@ function exportCSV(){
     const days = Math.max(0, Math.floor((end - new Date(t.createdAt)) / 86400000));
     return [t.id, t.orderNumber, t.orderType || '', t.company, t.pharmacy, t.cycle, t.issue, t.status,
             t.status === 'Resolved' ? '' : nameOf(t.holder), nameOf(t.createdBy), stamp(t.createdAt), stamp(t.updatedAt),
-            t.newOrderNumber, t.resolutionNote, t.attachmentUrl || '', t.retailIssueId ? (t.retailStatus === 'Resolved' ? 'Closed on both' : (t.retailStatus === 'Answered' ? 'Sayed resolved it' : 'Open there')) : '', t.resolvedBy ? nameOf(t.resolvedBy) : '', stamp(t.resolvedAt),
+            t.newOrderNumber, t.resolutionNote, attachmentsOf(t).map(function(a){ return a.url; }).join(' '), t.retailIssueId ? (t.retailStatus === 'Resolved' ? 'Closed on both' : (t.retailStatus === 'Answered' ? 'Sayed resolved it' : 'Open there')) : '', t.resolvedBy ? nameOf(t.resolvedBy) : '', stamp(t.resolvedAt),
             t._hops.length, days, t._events.map(function(e){ return stamp(e.at) + ' ' + plainEvent(e); }).join(' | ')];
   });
   const csv = '\uFEFF' + [head].concat(rows).map(function(r){ return r.map(csvCell).join(','); }).join('\r\n');
