@@ -109,7 +109,8 @@ select:focus-visible,.btn:focus-visible{outline:3px solid #14181F;outline-offset
 const LIST = [
   ['Administrative Control Authority (ACA)', 'W'],
   ['Ahly Medical', 'W'],
-  ['Ain Shams University', ''],
+  ['Ain Shams EMP&Pens', ''],
+  ['Ain Shams Staff', ''],
   ['Apatch Petroleum', ''],
   ['AXA Services Egypt', 'WV'],
   ['Bupa', 'WV'],
@@ -129,7 +130,8 @@ const LIST = [
   ['Medicare', ''],
   ['Mednet', 'WV'],
   ['MedRight HPM', ''],
-  ['MedRight TPA', 'W'],
+  ['MedRight TPA (Chronic)', ''],
+  ['MedRight TPA (Walk In)', 'W'],
   ['Metlife', 'WV'],
   ['Misr Health Care', 'WV'],
   ['Nasr Mining', ''],
@@ -147,6 +149,9 @@ const LIST = [
 ];
 
 const READY = {
+  'MedRight TPA (Chronic)': { tag: 'Full Match + Not Match', desc: 'One template: paste both parts into Per Line with the Match column. Max Limit switch is in Settings.', files: [ { label: 'MedRight TPA Chronic', full: 'MedRight TPA Chronic', file: 'MedRight_TPA_Chronic_Template.xlsx' } ] },
+  'MedRight TPA (Walk In)': { desc: 'Per Line and Per Invoice. Paste the month data into Per Line and Per Invoice fills itself.', files: [ { label: 'MedRight TPA Walk In', full: 'MedRight TPA Walk In', file: 'MedRight_TPA_Walk_In_Template.xlsx' } ] },
+  'MedRight HPM': { tag: 'Full Match + Not Match', desc: 'One template: paste both parts into Per Line with the Match column.', files: [ { label: 'MedRight HPM', full: 'MedRight HPM', file: 'MedRight_HPM_Chronic_Template.xlsx' } ] },
   'El Tawoon': { wide: true, tag: '3 branches', desc: 'One template per branch: invoice list, claim statements and totals fill themselves from the PERLINE.', files: [
       { label: 'Qebly', full: 'Qebly (Keply)', file: 'EL_Tawoon_Keply_Template.xlsx' },
       { label: 'Suez',  full: 'Suez (Swiss)',  file: 'EL_Tawoon_Swiss_Template.xlsx' },
@@ -185,11 +190,15 @@ const READY = {
   'Ahly Medical (Chronic)': { desc: 'Per Line and Per Invoice. One invoice per Order # and Approval Ref, like the sheet you use today.', files: [ { label: 'Ahly Medical Chronic', full: 'Ahly Medical Chronic', file: 'Ahly_Medical_Chronic_Template.xlsx' } ] },
   'Ahly Medical (Walk In)': { desc: 'Per Line and Per Invoice. Paste the month data into Per Line and Per Invoice fills itself.', files: [ { label: 'Ahly Medical Walk In', full: 'Ahly Medical Walk In', file: 'Ahly_Medical_Walk_In_Template.xlsx' } ] },
   'Administrative Control Authority (ACA) (Chronic)': { desc: 'Per Line and Per Invoice. Paste the month data into Per Line and Per Invoice fills itself.', files: [ { label: 'ACA Chronic', full: 'ACA Chronic', file: 'ACA_Chronic_Template.xlsx' } ] },
-  'Administrative Control Authority (ACA) (Walk In)': { desc: 'Per Line and Per Invoice. Paste the month data into Per Line and Per Invoice fills itself.', files: [ { label: 'ACA Walk In', full: 'ACA Walk In', file: 'ACA_Walk_In_Template.xlsx' } ] }
+  'Administrative Control Authority (ACA) (Walk In)': { desc: 'Per Line and Per Invoice. Paste the month data into Per Line and Per Invoice fills itself.', files: [ { label: 'ACA Walk In', full: 'ACA Walk In', file: 'ACA_Walk_In_Template.xlsx' } ] },
+  'Petrojet (Chronic)': { tag: 'One tab per site', desc: 'Per Line and Per Invoice, plus one tab for each site (split every 100 invoices) and a Summary.', files: [ { label: 'Petrojet Chronic', full: 'Petrojet Chronic', file: 'Petrojet_Chronic_Template.xlsx' } ] },
+  'Ain Shams EMP&Pens': { tag: 'Employees · Pensioners', desc: 'Per Line and Per Invoice, a tab and an Arabic template sheet for each cycle and group, and the claim Summary.', files: [ { label: 'Ain Shams EMP&Pens', full: 'Ain Shams EMP&Pens', file: 'Ain_Shams_EMP_Pens_Chronic_Template.xlsx' } ] },
+  'Ain Shams Staff': { tag: 'Below / above 10,000', desc: 'Per Line and Per Invoice, a tab and an Arabic template sheet for invoices below and above 10,000, and the Summary.', files: [ { label: 'Ain Shams Staff', full: 'Ain Shams Staff', file: 'Ain_Shams_Staff_Chronic_Template.xlsx' } ] }
 };
 
 const FEAT = {
-  'Ain Shams University': { featured: true, short: 'Ain Shams', tag: 'Coming soon' },
+  'Ain Shams EMP&Pens': { featured: true },
+  'Ain Shams Staff': { featured: true },
   'El Tawoon': { featured: true },
   'EMC': { featured: true },
   'Misr Health Care (Chronic)': { featured: true }
