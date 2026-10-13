@@ -417,7 +417,7 @@ function pageText(scan) {
 
 // ------------------------------------------------------------------ money (integer micro-units, no float error)
 const toMicro = str => {
-  const m = /^(\d+)(?:\.(\d+))?$/.exec(String(str).trim());
+  const m = /^(\d+)(?:\.(\d+))?$/.exec(String(str).replace(/[,\s\u00a0]/g, ''));
   if (!m) return null;
   return Number(m[1]) * 1e6 + Number(((m[2] || '') + '000000').slice(0, 6));
 };
@@ -505,7 +505,7 @@ function analyzeInvoice(L, ctx, page, scan, text, extraText) {
     const tot = col(5)[0], dis = col(6)[0];
     if (!nameRuns.length || !tot || !dis) throw new Error(`could not read a table row at y=${t}`);
     const total = toMicro(tot.text.trim()), disc = toMicro(dis.text.trim());
-    if (total === null || disc === null) throw new Error(`unreadable amounts in row "${nameRuns[0].text}"`);
+    if (total === null || disc === null) throw new Error(`unreadable amounts in row "${nameRuns[0].text}" (total "${tot.text.trim()}", discount "${dis.text.trim()}")`);
     return { t, h: b - t, runs: rr, name: nameRuns.map(r => r.text.trim()).join(' '), total, disc };
   });
   const sumRuns = runs.filter(r => r.top > ST - 1 && colOf(r.x, SCOLS) >= 0);
@@ -528,7 +528,7 @@ function analyzeInvoice(L, ctx, page, scan, text, extraText) {
   const kindVal = k => { const row = sumRows.find(r => r.kind === k); const c = row && row.cells[1]; return c ? toMicro(c.text.trim()) : null; };
   if (!sumRows.length || kindVal('tot') === null || kindVal('disc') === null) throw new Error('summary table not recognised');
   let net = kindVal('net');
-  if (net === null && extraText) { const m = /Net Amount\s+([\d.]+)/.exec(extraText); if (m) net = toMicro(m[1]); }
+  if (net === null && extraText) { const m = /Net Amount\s+([\d,.]+)/.exec(extraText); if (m) net = toMicro(m[1]); }
   const rowH = sumRows.length > 1 ? Math.round((sumRows[sumRows.length - 1].top - sumRows[0].top) / (sumRows.length - 1) * 100) / 100 : 17.25;
   const orderNo = (/Order Number:?\s*(\S+)/.exec(text) || [])[1] || '?';
   return { H, HT, HB, ST, SB, COLS, SCOLS, rows, headRuns, sumRuns, sumRows, rowH, rectColor, cutTop,
@@ -710,16 +710,21 @@ async function processPdf(fileBytes, opts) {
         return tokens(t);
       });
       groups = receipts.map(() => []);
+      const has = (ts, key) => ts.some(t => t === key || (t.length >= 5 && key.length >= 5 && (t.startsWith(key) || key.startsWith(t))));
       an.rows.forEach((row, ri) => {
-        const tk = tokens(row.name); let key = tk[0] || '';
-        if (key.length < 3 && tk[1]) key += tk[1];
-        const hits = [];
-        itemTokens.forEach((ts, k) => {
-          if (key && ts.some(t => t === key || (t.length >= 5 && key.length >= 5 && (t.startsWith(key) || key.startsWith(t))))) hits.push(k);
-        });
-        if (!hits.length) {                                  // looser fallback: names written with other spacing / hyphens
-          const keys = [tk[0], tk[0] + (tk[1] || '')].filter(x => x && x.length >= 4);
-          itemTokens.forEach((ts, k) => { const j = ts.join(''); if (keys.some(x => j.includes(x))) hits.push(k); });
+        const tk = tokens(row.name);
+        // start from the first word; while several approvals still fit, add the next word of the name until only one is left
+        let hits = itemTokens.map((_, k) => k), n = 0;
+        for (n = 1; n <= tk.length; n++) {
+          const h = hits.filter(k => tk.slice(0, n).every(w => has(itemTokens[k], w)));
+          if (n === 1 && !h.length) {
+            const keys = [tk[0], tk[0] + (tk[1] || '')].filter(x => x && x.length >= 4);   // looser fallback: other spacing / hyphens
+            hits = hits.filter(k => { const j = itemTokens[k].join(''); return keys.some(x => j.includes(x)); });
+            break;
+          }
+          if (!h.length) break;            // the extra words are written differently in the approval: keep the previous candidates
+          hits = h;
+          if (hits.length === 1) break;
         }
         if (hits.length === 1) groups[hits[0]].push(ri);
         else problems.push(`${row.name}: ` + (hits.length ? `found in ${hits.length} approvals` : 'not found in any approval'));
@@ -730,7 +735,7 @@ async function processPdf(fileBytes, opts) {
           if (!g.length) { problems.push(`approval #${rc.id} has no matching invoice items`); return; }
           const sel = g.map(i => an.rows[i]);
           const grab = re => { const m = re.exec(rc.text); return m ? toMicro(m[1]) : null; };
-          const gross = grab(/Gross Amount\s*:\s*([\d.]+)/), disc = grab(/Discount Amount\s*:\s*([\d.]+)/), netv = grab(/Net Amount\s*:\s*([\d.]+)/);
+          const gross = grab(/Gross Amount\s*:\s*([\d,.]+)/), disc = grab(/Discount Amount\s*:\s*([\d,.]+)/), netv = grab(/Net Amount\s*:\s*([\d,.]+)/);
           const nItems = grab(/No\. Of Items\s*:\s*(\d+)/);
           const t_ = sel.reduce((p, r) => p + r.total, 0), d_ = sel.reduce((p, r) => p + r.disc, 0);
           if (nItems !== null && nItems / 1e6 !== sel.length) problems.push(`approval #${rc.id}: ${nItems / 1e6} items vs ${sel.length} matched in invoice`);
