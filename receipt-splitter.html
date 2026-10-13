@@ -448,7 +448,7 @@ function groupUnits(ops) {
   return units;
 }
 
-function analyzeInvoice(L, ctx, page, scan, text) {
+function analyzeInvoice(L, ctx, page, scan, text, extraText) {
   const { H, ops, runs } = scan;
   const units = groupUnits(ops);
   const rects = [], segs = [];
@@ -514,13 +514,26 @@ function analyzeInvoice(L, ctx, page, scan, text) {
   const stray = runs.filter(r => r.top > cutTop && !used.has(r));
   if (stray.length) throw new Error('unexpected text inside the table area: "' + stray[0].text + '"');
 
-  const valRuns = sumRuns.filter(r => colOf(r.x, SCOLS) === 1 && mid(r) > SB).sort((p, q) => p.top - q.top);
-  if (valRuns.length !== 4) throw new Error('summary table not recognised');
-  const num = i => toMicro(valRuns[i].text.trim());
+  const body = sumRuns.filter(r => mid(r) > SB && r.text.trim() !== '').sort((p, q) => p.top - q.top);
+  const sumRows = [];
+  body.forEach(r => {
+    let row = sumRows[sumRows.length - 1];
+    if (!row || Math.abs(row.top - r.top) > 3) { row = { top: r.top, cells: [] }; sumRows.push(row); }
+    const c = colOf(r.x, SCOLS); if (c >= 0) row.cells[c] = r;
+  });
+  sumRows.forEach(row => {
+    const lab = ((row.cells[0] && row.cells[0].text) || '').toLowerCase();
+    row.kind = /net/.test(lab) ? 'net' : /disc/.test(lab) ? 'disc' : /total/.test(lab) ? 'tot' : 'other';
+  });
+  const kindVal = k => { const row = sumRows.find(r => r.kind === k); const c = row && row.cells[1]; return c ? toMicro(c.text.trim()) : null; };
+  if (!sumRows.length || kindVal('tot') === null || kindVal('disc') === null) throw new Error('summary table not recognised');
+  let net = kindVal('net');
+  if (net === null && extraText) { const m = /Net Amount\s+([\d.]+)/.exec(extraText); if (m) net = toMicro(m[1]); }
+  const rowH = sumRows.length > 1 ? Math.round((sumRows[sumRows.length - 1].top - sumRows[0].top) / (sumRows.length - 1) * 100) / 100 : 17.25;
   const orderNo = (/Order Number:?\s*(\S+)/.exec(text) || [])[1] || '?';
-  return { H, HT, HB, ST, SB, COLS, SCOLS, rows, headRuns, sumRuns, valRuns, rectColor, cutTop,
+  return { H, HT, HB, ST, SB, COLS, SCOLS, rows, headRuns, sumRuns, sumRows, rowH, rectColor, cutTop,
            lastBottom: bands[bands.length - 1][1], order: orderNo,
-           total: num(0), disc: num(1), net: num(3) };
+           total: kindVal('tot'), disc: kindVal('disc'), net };
 }
 
 function glyphWidth(font, str, size) {
@@ -585,22 +598,34 @@ function buildInvoice(scan, an, sel) {
   // 3) summary
   const sy = bottom + (an.ST - an.lastBottom);
   const dyS = an.ST - sy;
-  const rowH = 17.25, hdrH = an.SB - an.ST;
-  put(`q ${an.rectColor} ${fx(SCOLS[0])} ${fx(H - (sy + hdrH))} ${fx(SCOLS[SCOLS.length - 1] - SCOLS[0])} ${fx(hdrH)} re f Q\n`);
+  const rowH = an.rowH || 17.25, hdrH = an.SB - an.ST;
   const tot = sel.reduce((p, r) => p + r.total, 0), dis = sel.reduce((p, r) => p + r.disc, 0), net = tot - dis;
-  const newVals = [fmtMicro(tot), fmtMicro(dis), null, fmtMicro(net)];
-  an.sumRuns.forEach(r => {
-    const vi = an.valRuns.indexOf(r);
-    if (vi >= 0 && newVals[vi] !== null) {
+  const newVal = { tot: fmtMicro(tot), disc: fmtMicro(dis), net: fmtMicro(net) };
+  const srows = an.sumRows.map(r => ({ kind: r.kind, cells: r.cells.slice() }));
+  if (!srows.some(r => r.kind === 'net')) {            // the original put "Net Amount" on a following page: rebuild that row here
+    const last = srows[srows.length - 1];
+    const lab = last.cells[0], val = last.cells[1] || srows[0].cells[1], cur = last.cells[2] || srows[0].cells[2];
+    const lf = scan.fonts[lab.font];
+    srows.push({ kind: 'net', cells: [
+      { ...lab, y: lab.y - rowH, text: 'Net Amount', operand: encodeFor(lf, 'Net Amount'), showOp: 'Tj' },
+      { ...val, y: val.y - rowH },
+      cur ? { ...cur, y: cur.y - rowH } : undefined ] });
+  }
+  const endY = sy + hdrH + rowH * srows.length;
+  if (endY > H - 25) throw new Error('the selected items and the summary do not fit on one page');
+  put(`q ${an.rectColor} ${fx(SCOLS[0])} ${fx(H - (sy + hdrH))} ${fx(SCOLS[SCOLS.length - 1] - SCOLS[0])} ${fx(hdrH)} re f Q\n`);
+  an.sumRuns.filter(r => !an.sumRows.some(row => row.cells.includes(r))).forEach(r => emit(r, dyS));
+  srows.forEach(row => row.cells.forEach((r, ci) => {
+    if (!r) return;
+    if (ci === 1 && newVal[row.kind] !== undefined) {
       const font = scan.fonts[r.font];
-      const operand = encodeFor(font, newVals[vi]);
-      const wdt = glyphWidth(font, newVals[vi], r.size);
-      const cxm = (SCOLS[1] + SCOLS[2]) / 2;
-      emit({ ...r, x: cxm - wdt / 2, showOp: 'Tj' }, dyS, operand);
+      const operand = encodeFor(font, newVal[row.kind]);
+      const wdt = glyphWidth(font, newVal[row.kind], r.size);
+      emit({ ...r, x: (SCOLS[1] + SCOLS[2]) / 2 - wdt / 2, showOp: 'Tj' }, dyS, operand);
     } else emit(r, dyS);
-  });
+  }));
   let sg = 'q 0.886 G 0.75 w\n';
-  const ys = [sy, sy + hdrH]; for (let k = 1; k <= 4; k++) ys.push(sy + hdrH + rowH * k);
+  const ys = [sy, sy + hdrH]; for (let k = 1; k <= srows.length; k++) ys.push(sy + hdrH + rowH * k);
   ys.forEach(t => { sg += `${fx(SCOLS[0])} ${fx(H - t)} m ${fx(SCOLS[SCOLS.length - 1])} ${fx(H - t)} l S\n`; });
   SCOLS.forEach(x => { sg += `${fx(x)} ${fx(H - sy)} m ${fx(x)} ${fx(H - ys[ys.length - 1])} l S\n`; });
   put(sg + 'Q\n');
@@ -665,17 +690,37 @@ async function processPdf(fileBytes, opts) {
       const text = pgs.map(i => info[i].text).join('\n');
       return { pages: pgs, text, id: (/Reciept #(\d+)/.exec(text) || [])[1] };
     });
-    const problems = [];
+    const problems = [], warnings = [];
     let an = null, groups = null, scan = null;
     try {
-      if (recStarts[0] !== s + 1) throw new Error('the invoice seems to span more than one page');
+      // extra invoice pages (summary continued on the next page) must hold nothing but summary rows
+      let extraText = '';
+      for (let i = s + 1; i < recStarts[0]; i++) {
+        extraText += info[i].text + '\n';
+        const left = info[i].text.replace(/Summary|Totals|Currency|Net Amount|Total Approved|Discount|Co-Insurance|EGP|[\d.]+/g, '').trim();
+        if (left) throw new Error('the invoice continues on another page with content other than the summary');
+      }
       scan = info[s].scan;
-      an = analyzeInvoice(L, ctx, pages[s], scan, info[s].text);
-      const nt = receipts.map(r => norm(r.text));
+      an = analyzeInvoice(L, ctx, pages[s], scan, info[s].text, extraText);
+      const tokens = t => t.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+      const itemTokens = receipts.map(r => {
+        let t = r.text;
+        const h = /Dis\.\s+Cop\.\s+Net\s+Status/.exec(t); if (h) t = t.slice(h.index + h[0].length);
+        const n = t.search(/No\. Of Items/); if (n >= 0) t = t.slice(0, n);
+        return tokens(t);
+      });
       groups = receipts.map(() => []);
       an.rows.forEach((row, ri) => {
-        const key = norm(row.name.split(/\s+/)[0]);
-        const hits = []; nt.forEach((t, k) => { if (key && t.includes(key)) hits.push(k); });
+        const tk = tokens(row.name); let key = tk[0] || '';
+        if (key.length < 3 && tk[1]) key += tk[1];
+        const hits = [];
+        itemTokens.forEach((ts, k) => {
+          if (key && ts.some(t => t === key || (t.length >= 5 && key.length >= 5 && (t.startsWith(key) || key.startsWith(t))))) hits.push(k);
+        });
+        if (!hits.length) {                                  // looser fallback: names written with other spacing / hyphens
+          const keys = [tk[0], tk[0] + (tk[1] || '')].filter(x => x && x.length >= 4);
+          itemTokens.forEach((ts, k) => { const j = ts.join(''); if (keys.some(x => j.includes(x))) hits.push(k); });
+        }
         if (hits.length === 1) groups[hits[0]].push(ri);
         else problems.push(`${row.name}: ` + (hits.length ? `found in ${hits.length} approvals` : 'not found in any approval'));
       });
@@ -690,16 +735,16 @@ async function processPdf(fileBytes, opts) {
           const t_ = sel.reduce((p, r) => p + r.total, 0), d_ = sel.reduce((p, r) => p + r.disc, 0);
           if (nItems !== null && nItems / 1e6 !== sel.length) problems.push(`approval #${rc.id}: ${nItems / 1e6} items vs ${sel.length} matched in invoice`);
           [['gross', t_, gross], ['discount', d_, disc], ['net', t_ - d_, netv]].forEach(([nm, mine, theirs]) => {
-            if (theirs !== null && Math.abs(cents(mine) - cents(theirs)) > 1) problems.push(`approval #${rc.id}: ${nm} ${fmtMicro(mine)} in invoice vs ${fmtMicro(theirs)} in approval`);
+            if (theirs !== null && Math.abs(cents(mine) - cents(theirs)) > 1) warnings.push(`approval #${rc.id}: ${nm} is ${fmtMicro(mine)} on the invoice but ${fmtMicro(theirs)} on the approval`);
           });
         });
       }
       if (!problems.length) {
         const t_ = an.rows.reduce((p, r) => p + r.total, 0), d_ = an.rows.reduce((p, r) => p + r.disc, 0);
-        if (Math.abs(cents(t_) - cents(an.total)) > 1) problems.push(`total: items add up to ${fmtMicro(t_)} but invoice says ${fmtMicro(an.total)}`);
-        if (Math.abs(cents(d_) - cents(an.disc)) > 1) problems.push(`discount: items add up to ${fmtMicro(d_)} but invoice says ${fmtMicro(an.disc)}`);
+        if (Math.abs(cents(t_) - cents(an.total)) > 2) problems.push(`total: items add up to ${fmtMicro(t_)} but invoice says ${fmtMicro(an.total)}`);
+        if (Math.abs(cents(d_) - cents(an.disc)) > 2) problems.push(`discount: items add up to ${fmtMicro(d_)} but invoice says ${fmtMicro(an.disc)}`);
       }
-      // dry-run the rebuild so that any font/glyph problem is caught before anything is written
+      // dry-run the rebuild so that any font/glyph/space problem is caught before anything is written
       if (!problems.length) groups.forEach(g => buildInvoice(scan, an, g.map(i => an.rows[i])));
     } catch (ex) { problems.push(ex.message || String(ex)); }
 
@@ -719,8 +764,8 @@ async function processPdf(fileBytes, opts) {
       detail.push({ receipt: receipts[k].id, items: sel.map(r => r.name), total: fmtMicro(b.tot), discount: fmtMicro(b.dis), net: fmtMicro(b.net) });
     });
     nSplit++;
-    report.push({ order: label, status: 'split', approvals: recStarts.length, receipts: detail,
-                  check: `${fmtCents(sc)} / ${fmtCents(sd)} / ${fmtCents(sn)}  vs original ${fmtMicro(an.total)} / ${fmtMicro(an.disc)} / ${fmtMicro(an.net)}` });
+    report.push({ order: label, status: 'split', approvals: recStarts.length, receipts: detail, warnings,
+                  check: `${fmtCents(sc)} / ${fmtCents(sd)} / ${fmtCents(sn)}  vs original ${fmtMicro(an.total)} / ${fmtMicro(an.disc)} / ${fmtMicro(an.net === null ? an.total - an.disc : an.net)}` });
     if (oi % 10 === 0) { progress({ phase: 'Checking orders', done: oi, total: orders.length }); await tick(); }
   }
 
@@ -751,10 +796,11 @@ async function processPdf(fileBytes, opts) {
   let splitOnly = null;
   if (opts.splitOnly && splitPlan.length) splitOnly = await write(splitPlan, 'Writing split-only PDF');
   return { outBytes, splitOnly, report, stats: { pagesIn: N, pagesOut: plan.length, orders: orders.length, split: nSplit,
-           needReview: report.filter(r => r.status.startsWith('UNCHANGED')).length } };
+           needReview: report.filter(r => r.status.startsWith('UNCHANGED')).length,
+           warned: report.filter(r => r.warnings && r.warnings.length).length } };
 }
 
-root.SplitCore = { processPdf, _t: { tokenize, parseToUnicode, toMicro, fmtMicro } };
+root.SplitCore = { processPdf, _t: { tokenize, parseToUnicode, toMicro, fmtMicro, scan: scanPage, pageText } };
 if (typeof module !== 'undefined') module.exports = root.SplitCore;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
@@ -802,6 +848,7 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
       var d = r.problems ? r.problems.join(' | ')
         : r.receipts ? r.receipts.map(function (x) { return '#' + x.receipt + ': ' + x.items.join('; ') + ' [total ' + x.total + ', discount ' + x.discount + ', net ' + x.net + ']'; }).join(' | ')
         : (r.note || '');
+      if (r.warnings && r.warnings.length) d += ' || CHECK AMOUNTS: ' + r.warnings.join(' | ');
       lines.push([fileName, r.order, r.status, r.approvals, d].map(csvCell).join(','));
     });
     return lines.join('\r\n');
@@ -818,6 +865,7 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
     stats.appendChild(pill(st.orders + (st.orders === 1 ? ' order' : ' orders')));
     stats.appendChild(pill(st.split + ' split', st.split ? 'ok' : ''));
     stats.appendChild(pill(st.needReview + ' need review', st.needReview ? 'warn' : 'ok'));
+    if (st.warned) stats.appendChild(pill(st.warned + ' to check', 'warn'));
     stats.appendChild(pill(st.pagesIn + ' → ' + st.pagesOut + ' pages'));
     head.appendChild(stats); card.appendChild(head);
 
@@ -845,6 +893,18 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
       });
       box.appendChild(ul); card.appendChild(box);
     }
+    var warned = rep.filter(function (r) { return r.warnings && r.warnings.length; });
+    if (warned.length) {
+      var wb = el('div', 'review');
+      wb.appendChild(el('h3', null, warned.length + (warned.length === 1 ? ' order was split, but its amounts differ from the approval' : ' orders were split, but their amounts differ from the approvals')));
+      var wl = el('ul');
+      warned.forEach(function (r) {
+        var li = el('li'); li.appendChild(el('span', 'order', r.order));
+        r.warnings.forEach(function (p) { li.appendChild(el('span', 'why', p)); });
+        wl.appendChild(li);
+      });
+      wb.appendChild(wl); card.appendChild(wb);
+    }
     var single = rep.filter(function (r) { return r.status === 'unchanged'; }).length;
     if (single) card.appendChild(el('p', 'note', single + (single === 1 ? ' order has' : ' orders have') + ' a single approval and stayed as it is.'));
 
@@ -866,7 +926,7 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
         });
       });
       tb.appendChild(body); wrap.appendChild(tb); det.appendChild(wrap); card.appendChild(det);
-      card.appendChild(el('p', 'note', 'Each new invoice was checked against its approval: total, discount and net amount must match, and the new invoices add up to the original one.'));
+      card.appendChild(el('p', 'note', 'Items were matched to approvals by name and count; the new invoices add up to the original one. Where an invoice amount differs from its approval, the order is listed above so you can check it.'));
     }
   }
 
