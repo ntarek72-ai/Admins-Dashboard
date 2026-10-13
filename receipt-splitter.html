@@ -709,7 +709,7 @@ async function processPdf(fileBytes, opts) {
     const scan = scanPage(L, ctx, pages[i]);
     const text = pageText(scan);
     if (/Pharmacy Invoice/.test(text)) inInvoice = true; else if (/Reciept #/.test(text)) inInvoice = false;
-    info[i] = { text, scan: inInvoice ? scan : null };
+    info[i] = { text, inv: inInvoice };       // parsed content is not kept (big files): invoice pages are re-read when needed
     if (i % 25 === 0) { progress({ phase: 'Reading pages', done: i, total: N }); await tick(); }
   }
   progress({ phase: 'Reading pages', done: N, total: N });
@@ -778,7 +778,7 @@ async function processPdf(fileBytes, opts) {
     const problems = [], warnings = [];
     let an = null, groups = null, left = [], quiet = null, trivial = false;
     try {
-      const scans = []; for (let i = s; i < invEnd; i++) { if (!info[i].scan) throw new Error('could not read an invoice page'); scans.push(info[i].scan); }
+      const scans = []; for (let i = s; i < invEnd; i++) { if (!info[i].inv) throw new Error('could not read an invoice page'); scans.push(scanPage(L, ctx, pages[i])); }
       an = analyzeInvoice(scans, info[s].text);
       const nItems = receipts.map(rc => grabNum(rc.text, /No\. Of Items\s*:\s*(\d+)/));
       if (receipts.length === 1 && nItems[0] !== null && nItems[0] / 1e6 === an.rows.length) trivial = true;   // one approval, same number of items: nothing to do
