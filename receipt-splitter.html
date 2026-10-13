@@ -339,7 +339,7 @@ function loadFonts(L, ctx, page) {
     const sub = fd.lookup(L.PDFName.of('Subtype'));
     const rec = {
       name: baseFont && baseFont.decodeText ? baseFont.decodeText() : (baseFont ? String(baseFont) : ''),
-      type0: sub && String(sub) === '/Type0',
+      type0: sub && String(sub) === '/Type0', ref: String(v),
       uni: null, inv: null, W: null, DW: 1000,
     };
     rec.name = String(baseFont || '').replace(/^\//, '');
@@ -464,7 +464,7 @@ function groupUnits(ops) {
   return units;
 }
 
-function analyzeInvoice(L, ctx, page, scan, text, extraText) {
+function analyzePage(scan) {
   const { H, ops, runs } = scan;
   const units = groupUnits(ops);
   const rects = [], segs = [];
@@ -494,62 +494,82 @@ function analyzeInvoice(L, ctx, page, scan, text, extraText) {
   const groups = [...byTop.entries()].map(([k, v]) => ({ t: v[0][2], b: v[0][3], v }));
   const head = groups.filter(g => g.v.length >= 5).sort((p, q) => p.t - q.t)[0];
   const summ = groups.filter(g => g.v.length === 3).sort((p, q) => p.t - q.t)[0];
-  if (!head || !summ) throw new Error('could not find the items table / summary table');
-  const COLS = head.v.map(r => r[0]).sort((p, q) => p - q).concat([Math.max(...head.v.map(r => r[1]))]);
-  const SCOLS = summ.v.map(r => r[0]).sort((p, q) => p - q).concat([Math.max(...summ.v.map(r => r[1]))]);
-  const HT = head.t, HB = head.b, ST = summ.t, SB = summ.b;
-
-  const hl = segs.filter(s => Math.abs(s[1] - s[3]) < 0.01).map(s => ({ x0: Math.min(s[0], s[2]), x1: Math.max(s[0], s[2]), top: H - s[1] }));
-  const topsSet = new Set();
-  hl.forEach(l => {
-    if (Math.abs(l.x0 - COLS[0]) < 0.4 && Math.abs(l.x1 - COLS[1]) < 0.4 && l.top >= HB - 0.3 && l.top < ST - 1) topsSet.add(Math.round(l.top * 10) / 10);
-  });
-  const tops = [...topsSet].sort((p, q) => p - q);
-  const bands = []; for (let k = 0; k + 1 < tops.length; k++) bands.push([tops[k], tops[k + 1]]);
-  if (!bands.length) throw new Error('could not read the table rows');
-
+  if (!head && !summ) throw new Error('could not find the items table / summary table');
   const colOf = (v, cols) => { for (let i = 0; i < cols.length - 1; i++) if (v >= cols[i] - 1 && v < cols[i + 1]) return i; return -1; };
   const mid = r => r.top - 0.35 * r.size;
   const used = new Set();
-  const headRuns = runs.filter(r => r.top > HT - 0.4 && mid(r) > HT && mid(r) < HB);
-  headRuns.forEach(r => used.add(r));
-  const rows = bands.map(([t, b]) => {
-    const rr = runs.filter(r => mid(r) > t && mid(r) < b && colOf(r.x, COLS) >= 0);
-    rr.forEach(r => used.add(r));
-    const col = i => rr.filter(r => colOf(r.x, COLS) === i);
-    const nameRuns = rr.filter(r => colOf(r.x, COLS) === 1 && r.bold).sort((p, q) => p.top - q.top);
-    const tot = col(5)[0], dis = col(6)[0];
-    if (!nameRuns.length || !tot || !dis) throw new Error(`could not read a table row at y=${t}`);
-    const total = toMicro(tot.text.trim()), disc = toMicro(dis.text.trim());
-    if (total === null || disc === null) throw new Error(`unreadable amounts in row "${nameRuns[0].text}" (total "${tot.text.trim()}", discount "${dis.text.trim()}")`);
-    return { t, h: b - t, runs: rr, name: nameRuns.map(r => r.text.trim()).join(' '), total, disc };
-  });
-  const sumRuns = runs.filter(r => r.top > ST - 1 && colOf(r.x, SCOLS) >= 0);
-  sumRuns.forEach(r => used.add(r));
-  const cutTop = HT - 0.4;
-  const stray = runs.filter(r => r.top > cutTop && !used.has(r));
+  const pg = { H, scan, hasHead: !!head, hasSumm: !!summ, rows: [], headRuns: [], sumRuns: [], sumRows: [], rectColor, rowH: 17.25, lastBottom: null };
+  const ST = summ ? summ.t : null, SB = summ ? summ.b : null;
+  if (head) {
+    const COLS = head.v.map(r => r[0]).sort((p, q) => p - q).concat([Math.max(...head.v.map(r => r[1]))]);
+    const HT = head.t, HB = head.b;
+    const hl = segs.filter(sg => Math.abs(sg[1] - sg[3]) < 0.01).map(sg => ({ x0: Math.min(sg[0], sg[2]), x1: Math.max(sg[0], sg[2]), top: H - sg[1] }));
+    const topsSet = new Set();
+    hl.forEach(l => {
+      if (Math.abs(l.x0 - COLS[0]) < 0.4 && Math.abs(l.x1 - COLS[1]) < 0.4 && l.top >= HB - 0.3 && l.top < (summ ? ST - 1 : H)) topsSet.add(Math.round(l.top * 10) / 10);
+    });
+    const tops = [...topsSet].sort((p, q) => p - q);
+    const bands = []; for (let k = 0; k + 1 < tops.length; k++) bands.push([tops[k], tops[k + 1]]);
+    if (!bands.length) throw new Error('could not read the table rows');
+    pg.headRuns = runs.filter(r => r.top > HT - 0.4 && mid(r) > HT && mid(r) < HB);
+    pg.headRuns.forEach(r => used.add(r));
+    pg.rows = bands.map(([t, b]) => {
+      const rr = runs.filter(r => mid(r) > t && mid(r) < b && colOf(r.x, COLS) >= 0);
+      rr.forEach(r => used.add(r));
+      const col = i => rr.filter(r => colOf(r.x, COLS) === i);
+      const nameRuns = rr.filter(r => colOf(r.x, COLS) === 1 && r.bold).sort((p, q) => p.top - q.top);
+      const tot = col(5)[0], dis = col(6)[0];
+      if (!nameRuns.length || !tot || !dis) throw new Error(`could not read a table row at y=${t}`);
+      const total = toMicro(tot.text.trim()), disc = toMicro(dis.text.trim());
+      if (total === null || disc === null) throw new Error(`unreadable amounts in row "${nameRuns[0].text}" (total "${tot.text.trim()}", discount "${dis.text.trim()}")`);
+      return { t, h: b - t, runs: rr, name: nameRuns.map(r => r.text.trim()).join(' '), total, disc };
+    });
+    Object.assign(pg, { COLS, HT, HB, lastBottom: bands[bands.length - 1][1] });
+  }
+  if (summ) {
+    const SCOLS = summ.v.map(r => r[0]).sort((p, q) => p - q).concat([Math.max(...summ.v.map(r => r[1]))]);
+    pg.sumRuns = runs.filter(r => r.top > ST - 1 && colOf(r.x, SCOLS) >= 0);
+    pg.sumRuns.forEach(r => used.add(r));
+    const body = pg.sumRuns.filter(r => mid(r) > SB && r.text.trim() !== '').sort((p, q) => p.top - q.top);
+    body.forEach(r => {
+      let row = pg.sumRows[pg.sumRows.length - 1];
+      if (!row || Math.abs(row.top - r.top) > 3) { row = { top: r.top, cells: [] }; pg.sumRows.push(row); }
+      const c = colOf(r.x, SCOLS); if (c >= 0) row.cells[c] = r;
+    });
+    pg.sumRows.forEach(row => {
+      const lab = ((row.cells[0] && row.cells[0].text) || '').toLowerCase();
+      row.kind = /net/.test(lab) ? 'net' : /disc/.test(lab) ? 'disc' : /total/.test(lab) ? 'tot' : 'other';
+    });
+    if (pg.sumRows.length > 1) pg.rowH = Math.round((pg.sumRows[pg.sumRows.length - 1].top - pg.sumRows[0].top) / (pg.sumRows.length - 1) * 100) / 100;
+    Object.assign(pg, { SCOLS, ST, SB });
+  }
+  pg.cutTop = (head ? head.t : ST) - 0.4;
+  const stray = runs.filter(r => r.top > pg.cutTop && !used.has(r));
   if (stray.length) throw new Error('unexpected text inside the table area: "' + stray[0].text + '"');
+  return pg;
+}
 
-  const body = sumRuns.filter(r => mid(r) > SB && r.text.trim() !== '').sort((p, q) => p.top - q.top);
-  const sumRows = [];
-  body.forEach(r => {
-    let row = sumRows[sumRows.length - 1];
-    if (!row || Math.abs(row.top - r.top) > 3) { row = { top: r.top, cells: [] }; sumRows.push(row); }
-    const c = colOf(r.x, SCOLS); if (c >= 0) row.cells[c] = r;
-  });
-  sumRows.forEach(row => {
-    const lab = ((row.cells[0] && row.cells[0].text) || '').toLowerCase();
-    row.kind = /net/.test(lab) ? 'net' : /disc/.test(lab) ? 'disc' : /total/.test(lab) ? 'tot' : 'other';
-  });
-  const kindVal = k => { const row = sumRows.find(r => r.kind === k); const c = row && row.cells[1]; return c ? toMicro(c.text.trim()) : null; };
-  if (!sumRows.length || kindVal('tot') === null || kindVal('disc') === null) throw new Error('summary table not recognised');
-  let net = kindVal('net');
-  if (net === null && extraText) { const m = /Net Amount\s+([\d,.]+)/.exec(extraText); if (m) net = toMicro(m[1]); }
-  const rowH = sumRows.length > 1 ? Math.round((sumRows[sumRows.length - 1].top - sumRows[0].top) / (sumRows.length - 1) * 100) / 100 : 17.25;
+// the invoice may run over several pages: items table on the first page(s), summary at the end
+function analyzeInvoice(scans, text) {
+  const pgs = scans.map(analyzePage);
+  const first = pgs[0];
+  if (!first.hasHead) throw new Error('could not find the items table');
+  const rows = [];
+  pgs.forEach((pg, j) => pg.rows.forEach(r => rows.push({ ...r, page: j })));
+  pgs.forEach(pg => { if (pg.hasHead && pg.COLS.some((x, i) => Math.abs(x - first.COLS[i]) > 0.6)) throw new Error('the table columns differ between the invoice pages'); });
+  const sp = pgs.find(p => p.hasSumm);
+  if (!sp) throw new Error('summary table not recognised');
+  const kindVal = k => {
+    for (const pg of pgs) for (const row of pg.sumRows) if (row.kind === k && row.cells[1]) { const v = toMicro(row.cells[1].text.trim()); if (v !== null) return v; }
+    return null;
+  };
+  if (!sp.sumRows.length || kindVal('tot') === null || kindVal('disc') === null) throw new Error('summary table not recognised');
+  // fonts used on every page must be the same objects under the same names
+  const seen = new Map();
+  pgs.forEach(pg => Object.entries(pg.scan.fonts).forEach(([nm, f]) => { if (seen.has(nm) && seen.get(nm) !== f.ref) throw new Error('the invoice pages use different fonts under the same name'); seen.set(nm, f.ref); }));
   const orderNo = (/Order Number:?\s*(\S+)/.exec(text) || [])[1] || '?';
-  return { H, HT, HB, ST, SB, COLS, SCOLS, rows, headRuns, sumRuns, sumRows, rowH, rectColor, cutTop,
-           lastBottom: bands[bands.length - 1][1], order: orderNo,
-           total: kindVal('tot'), disc: kindVal('disc'), net };
+  const cont = pgs.length > 1 ? 1 : null;
+  return { pages: pgs, first, sp, cont, rows, order: orderNo, total: kindVal('tot'), disc: kindVal('disc'), net: kindVal('net') };
 }
 
 function glyphWidth(font, str, size) {
@@ -571,70 +591,92 @@ function encodeFor(font, str) {
   return enc('<' + hex + '>');
 }
 
-function buildInvoice(scan, an, sel) {
-  const { H, bytes, ops } = scan;
-  const chunks = [];
-  const put = s => chunks.push(enc(s));
-  const putBytes = b => chunks.push(b);
-  // 1) original content minus the table / summary (real removal)
-  const units = groupUnits(ops);
-  const cutY = H - an.cutTop;
-  for (const u of units) {
-    let drop = false;
-    for (let k = u.a; k <= u.b; k++) {
-      const o = ops[k].op;
-      if (o === 're' || o === 'S' || o === 'm' || o === 'l') drop = true;
-      if (o === 'Td' && scan.runs.some(r => r.idx > k && r.idx <= u.b) && false) drop = true;
-    }
-    if (!drop) {
-      for (const r of scan.runs) if (r.idx >= u.a && r.idx <= u.b && r.y < cutY) drop = true;
-    }
-    if (!drop) { chunks.push(bytes.subarray(ops[u.a].s, ops[u.b].e)); put('\n'); }
-  }
-  // 2) rebuilt table
-  const { COLS, SCOLS } = an;
+function buildInvoice(an, sel) {
+  const first = an.first, sp = an.sp, H = first.H, LIM = H - 47;
+  const outPages = [];
+  let cur = null;
+  const put = s => cur.chunks.push(enc(s));
+  const fontsOf = pg => pg.scan.fonts;
   const emit = (r, dy, operand) => {
     put(`q ${r.fill} BT /${r.font} ${r.size} Tf ${fx(r.x)} ${fx(r.y + dy)} Td `);
-    putBytes(operand || r.operand);
+    cur.chunks.push(operand || r.operand);
     put(` ${r.showOp} ET Q\n`);
   };
-  put(`q ${an.rectColor} ${fx(COLS[0])} ${fx(H - an.HB)} ${fx(COLS[COLS.length - 1] - COLS[0])} ${fx(an.HB - an.HT)} re f Q\n`);
-  an.headRuns.forEach(r => emit(r, 0));
-  let y = an.HB; const hlines = [an.HT, an.HB];
+  // 1) the page's own content minus the table / summary (real removal)
+  const startPage = tpl => {
+    const pg = an.pages[tpl], { bytes, ops } = pg.scan;
+    cur = { tpl, pg, chunks: [], hl: [], bottom: 0 };
+    outPages.push(cur);
+    const units = groupUnits(ops), cutY = H - pg.cutTop;
+    for (const u of units) {
+      let drop = false;
+      for (let k = u.a; k <= u.b; k++) { const o = ops[k].op; if (o === 're' || o === 'S' || o === 'm' || o === 'l') drop = true; }
+      if (!drop) for (const r of pg.scan.runs) if (r.idx >= u.a && r.idx <= u.b && r.y < cutY) drop = true;
+      if (!drop) { cur.chunks.push(bytes.subarray(ops[u.a].s, ops[u.b].e)); put('\n'); }
+    }
+  };
+  // 2) table header on the current page
+  const COLS = first.COLS;
+  const drawHead = (proto, top) => {
+    const dy = proto.HT - top;
+    put(`q ${proto.rectColor} ${fx(COLS[0])} ${fx(H - (top + proto.HB - proto.HT))} ${fx(COLS[COLS.length - 1] - COLS[0])} ${fx(proto.HB - proto.HT)} re f Q\n`);
+    proto.headRuns.forEach(r => emit(r, dy));
+    cur.top = top; cur.hl = [top, top + proto.HB - proto.HT]; cur.bottom = top + proto.HB - proto.HT;
+  };
+  const closeTable = () => {
+    let g = 'q 0.886 G 0.75 w\n';
+    cur.hl.forEach(t => { g += `${fx(COLS[0])} ${fx(H - t)} m ${fx(COLS[COLS.length - 1])} ${fx(H - t)} l S\n`; });
+    COLS.forEach(x => { g += `${fx(x)} ${fx(H - cur.top)} m ${fx(x)} ${fx(H - cur.bottom)} l S\n`; });
+    put(g + 'Q\n');
+  };
+  const contPage = () => {
+    if (an.cont === null) throw new Error('the selected items do not fit on one page');
+    startPage(an.cont);
+    const c = an.pages[an.cont];
+    return { proto: c.hasHead ? c : first, top: c.hasHead ? c.HT : (c.hasSumm ? c.ST : first.HT) };
+  };
+  startPage(0);
+  drawHead(first, first.HT);
+  let y = first.HB;
   for (const row of sel) {
-    const dy = row.t - y;                     // moving up by dy (top-based) = +dy in PDF y
+    if (y + row.h > LIM) {
+      if (cur.hl.length <= 2) throw new Error('a table row does not fit on a page');
+      closeTable();
+      const { proto, top } = contPage();
+      drawHead(proto, top);
+      y = top + (proto.HB - proto.HT);
+    }
+    const dy = row.t - y;
     row.runs.forEach(r => emit(r, dy));
-    y += row.h; hlines.push(y);
+    y += row.h; cur.hl.push(y); cur.bottom = y;
   }
-  const bottom = y;
-  let g = 'q 0.886 G 0.75 w\n';
-  hlines.forEach(t => { g += `${fx(COLS[0])} ${fx(H - t)} m ${fx(COLS[COLS.length - 1])} ${fx(H - t)} l S\n`; });
-  COLS.forEach(x => { g += `${fx(x)} ${fx(H - an.HT)} m ${fx(x)} ${fx(H - bottom)} l S\n`; });
-  put(g + 'Q\n');
+  closeTable();
   // 3) summary
-  const sy = bottom + (an.ST - an.lastBottom);
-  const dyS = an.ST - sy;
-  const rowH = an.rowH || 17.25, hdrH = an.SB - an.ST;
+  const SCOLS = sp.SCOLS, rowH = sp.rowH || 17.25, hdrH = sp.SB - sp.ST;
   const tot = sel.reduce((p, r) => p + r.total, 0), dis = sel.reduce((p, r) => p + r.disc, 0), net = tot - dis;
   const newVal = { tot: fmtMicro(tot), disc: fmtMicro(dis), net: fmtMicro(net) };
-  const srows = an.sumRows.map(r => ({ kind: r.kind, cells: r.cells.slice() }));
+  const srows = sp.sumRows.map(r => ({ kind: r.kind, cells: r.cells.slice() }));
   if (!srows.some(r => r.kind === 'net')) {            // the original put "Net Amount" on a following page: rebuild that row here
     const last = srows[srows.length - 1];
-    const lab = last.cells[0], val = last.cells[1] || srows[0].cells[1], cur = last.cells[2] || srows[0].cells[2];
-    const lf = scan.fonts[lab.font];
+    const lab = last.cells[0], val = last.cells[1] || srows[0].cells[1], cur2 = last.cells[2] || srows[0].cells[2];
+    const lf = fontsOf(sp)[lab.font];
     srows.push({ kind: 'net', cells: [
       { ...lab, y: lab.y - rowH, text: 'Net Amount', operand: encodeFor(lf, 'Net Amount'), showOp: 'Tj' },
       { ...val, y: val.y - rowH },
-      cur ? { ...cur, y: cur.y - rowH } : undefined ] });
+      cur2 ? { ...cur2, y: cur2.y - rowH } : undefined ] });
   }
-  const endY = sy + hdrH + rowH * srows.length;
-  if (endY > H - 25) throw new Error('the selected items and the summary do not fit on one page');
-  put(`q ${an.rectColor} ${fx(SCOLS[0])} ${fx(H - (sy + hdrH))} ${fx(SCOLS[SCOLS.length - 1] - SCOLS[0])} ${fx(hdrH)} re f Q\n`);
-  an.sumRuns.filter(r => !an.sumRows.some(row => row.cells.includes(r))).forEach(r => emit(r, dyS));
+  const need = hdrH + rowH * srows.length;
+  const gap = sp.hasHead && sp.lastBottom !== null ? sp.ST - sp.lastBottom : 16;
+  let sy = y + gap;
+  if (sy + need > LIM) { const c = contPage(); sy = c.top; }
+  if (sy + need > LIM + 12) throw new Error('the summary does not fit on the page');
+  const dyS = sp.ST - sy;
+  put(`q ${sp.rectColor} ${fx(SCOLS[0])} ${fx(H - (sy + hdrH))} ${fx(SCOLS[SCOLS.length - 1] - SCOLS[0])} ${fx(hdrH)} re f Q\n`);
+  sp.sumRuns.filter(r => !sp.sumRows.some(row => row.cells.includes(r))).forEach(r => emit(r, dyS));
   srows.forEach(row => row.cells.forEach((r, ci) => {
     if (!r) return;
     if (ci === 1 && newVal[row.kind] !== undefined) {
-      const font = scan.fonts[r.font];
+      const font = fontsOf(sp)[r.font];
       const operand = encodeFor(font, newVal[row.kind]);
       const wdt = glyphWidth(font, newVal[row.kind], r.size);
       emit({ ...r, x: (SCOLS[1] + SCOLS[2]) / 2 - wdt / 2, showOp: 'Tj' }, dyS, operand);
@@ -645,7 +687,7 @@ function buildInvoice(scan, an, sel) {
   ys.forEach(t => { sg += `${fx(SCOLS[0])} ${fx(H - t)} m ${fx(SCOLS[SCOLS.length - 1])} ${fx(H - t)} l S\n`; });
   SCOLS.forEach(x => { sg += `${fx(x)} ${fx(H - sy)} m ${fx(x)} ${fx(H - ys[ys.length - 1])} l S\n`; });
   put(sg + 'Q\n');
-  return { bytes: concatBytes(chunks), tot, dis, net };
+  return { pages: outPages.map(o => ({ tpl: o.tpl, bytes: concatBytes(o.chunks) })), tot, dis, net };
 }
 
 // ------------------------------------------------------------------ main
@@ -662,10 +704,12 @@ async function processPdf(fileBytes, opts) {
 
   // 1) read every page once
   const info = new Array(N);
+  let inInvoice = false;       // pages of an invoice (it may run over several pages) keep their parsed content
   for (let i = 0; i < N; i++) {
     const scan = scanPage(L, ctx, pages[i]);
     const text = pageText(scan);
-    info[i] = { text, scan: /Pharmacy Invoice/.test(text) ? scan : null };
+    if (/Pharmacy Invoice/.test(text)) inInvoice = true; else if (/Reciept #/.test(text)) inInvoice = false;
+    info[i] = { text, scan: inInvoice ? scan : null };
     if (i % 25 === 0) { progress({ phase: 'Reading pages', done: i, total: N }); await tick(); }
   }
   progress({ phase: 'Reading pages', done: N, total: N });
@@ -732,17 +776,10 @@ async function processPdf(fileBytes, opts) {
     }
 
     const problems = [], warnings = [];
-    let an = null, groups = null, left = [], scan = null, quiet = null, trivial = false;
+    let an = null, groups = null, left = [], quiet = null, trivial = false;
     try {
-      // extra invoice pages (summary continued on the next page) must hold nothing but summary rows
-      let extraText = '';
-      for (let i = s + 1; i < invEnd; i++) {
-        extraText += info[i].text + '\n';
-        const rest = info[i].text.replace(/Summary|Totals|Currency|Net Amount|Total Approved|Discount|Co-Insurance|EGP|[\d.,]+/g, '').trim();
-        if (rest) throw new Error('the invoice continues on another page with content other than the summary');
-      }
-      scan = info[s].scan;
-      an = analyzeInvoice(L, ctx, pages[s], scan, info[s].text, extraText);
+      const scans = []; for (let i = s; i < invEnd; i++) { if (!info[i].scan) throw new Error('could not read an invoice page'); scans.push(info[i].scan); }
+      an = analyzeInvoice(scans, info[s].text);
       const nItems = receipts.map(rc => grabNum(rc.text, /No\. Of Items\s*:\s*(\d+)/));
       if (receipts.length === 1 && nItems[0] !== null && nItems[0] / 1e6 === an.rows.length) trivial = true;   // one approval, same number of items: nothing to do
       if (!trivial) {
@@ -783,18 +820,18 @@ async function processPdf(fileBytes, opts) {
             const t_ = sel.reduce((p, r) => p + r.total, 0), d_ = sel.reduce((p, r) => p + r.disc, 0);
             if (nItems[k] !== null && nItems[k] / 1e6 !== sel.length) warnings.push(`approval #${rc.id} lists ${nItems[k] / 1e6} item${nItems[k] / 1e6 === 1 ? '' : 's'} but ${sel.length} invoice item${sel.length === 1 ? '' : 's'} matched it (check the quantities dispensed)`);
             [['gross', t_, gross], ['discount', d_, disc], ['net', t_ - d_, netv]].forEach(([nm, mine, theirs]) => {
-              if (theirs !== null && Math.abs(cents(mine) - cents(theirs)) > 1) warnings.push(`approval #${rc.id}: ${nm} is ${fmtMicro(mine)} on the invoice but ${fmtMicro(theirs)} on the approval`);
+              if (theirs !== null && Math.abs(cents(mine) - cents(theirs)) > 200) warnings.push(`approval #${rc.id}: ${nm} is ${fmtMicro(mine)} on the invoice but ${fmtMicro(theirs)} on the approval`);
             });
           });
         }
         if (!problems.length && left.length) warnings.push(`no approval found for: ${left.map(i => an.rows[i].name).join('; ')} (put on a separate invoice at the end)`);
         if (!problems.length) {
           const t_ = an.rows.reduce((p, r) => p + r.total, 0), d_ = an.rows.reduce((p, r) => p + r.disc, 0);
-          if (Math.abs(cents(t_) - cents(an.total)) > 2) problems.push(`total: items add up to ${fmtMicro(t_)} but invoice says ${fmtMicro(an.total)}`);
-          if (Math.abs(cents(d_) - cents(an.disc)) > 2) problems.push(`discount: items add up to ${fmtMicro(d_)} but invoice says ${fmtMicro(an.disc)}`);
+          if (Math.abs(cents(t_) - cents(an.total)) > 200) problems.push(`total: items add up to ${fmtMicro(t_)} but invoice says ${fmtMicro(an.total)}`);
+          if (Math.abs(cents(d_) - cents(an.disc)) > 200) problems.push(`discount: items add up to ${fmtMicro(d_)} but invoice says ${fmtMicro(an.disc)}`);
         }
         // dry-run the rebuild so that any font/glyph/space problem is caught before anything is written
-        if (!problems.length) { groups.forEach(g => buildInvoice(scan, an, g.map(i => an.rows[i]))); if (left.length) buildInvoice(scan, an, left.map(i => an.rows[i])); }
+        if (!problems.length) { groups.forEach(g => buildInvoice(an, g.map(i => an.rows[i]))); if (left.length) buildInvoice(an, left.map(i => an.rows[i])); }
       }
     } catch (ex) {
       if (receipts.length === 1) quiet = ex.message || String(ex); else problems.push(ex.message || String(ex));
@@ -813,9 +850,11 @@ async function processPdf(fileBytes, opts) {
     }
     const detail = []; let sc = 0, sd = 0, sn = 0;
     const emit = (sel, rc) => {
-      const b = buildInvoice(scan, an, sel);
-      const item = { src: s, content: b.bytes }; if (stamp !== null) item.stamp = stamp;
-      plan.push(item); splitPlan.push(item);
+      const b = buildInvoice(an, sel);
+      b.pages.forEach(pgb => {
+        const item = { src: s + pgb.tpl, content: pgb.bytes }; if (stamp !== null) item.stamp = stamp;
+        plan.push(item); splitPlan.push(item);
+      });
       if (rc) rc.pages.forEach(pi => { const it = mk(pi, false); plan.push(it); splitPlan.push({ ...it }); });
       sc += cents(b.tot); sd += cents(b.dis); sn += cents(b.net);
       detail.push({ receipt: rc ? rc.id : null, noApproval: !rc, items: sel.map(r => r.name), total: fmtMicro(b.tot), discount: fmtMicro(b.dis), net: fmtMicro(b.net) });
@@ -867,7 +906,7 @@ async function processPdf(fileBytes, opts) {
            warned: report.filter(r => r.warnings && r.warnings.length).length } };
 }
 
-root.SplitCore = { processPdf, _t: { tokenize, parseToUnicode, toMicro, fmtMicro, scan: scanPage, pageText } };
+root.SplitCore = { processPdf, _t: { analyzeInvoice, buildInvoice, tokenize, parseToUnicode, toMicro, fmtMicro, scan: scanPage, pageText } };
 if (typeof module !== 'undefined') module.exports = root.SplitCore;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
@@ -912,11 +951,11 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
   function reportCsv(fileName, report) {
     var lines = [['file', 'order', 'number', 'status', 'approvals', 'details'].map(csvCell).join(',')];
     report.forEach(function (r) {
-      var d = r.problems ? r.problems.join(' | ')
-        : r.receipts ? r.receipts.map(function (x) { return (x.receipt ? '#' + x.receipt : 'NO APPROVAL') + ': ' + x.items.join('; ') + ' [total ' + x.total + ', discount ' + x.discount + ', net ' + x.net + ']'; }).join(' | ')
-        : (r.note || '');
-      if (r.duplicates && r.duplicates.length) d += ' || DUPLICATE APPROVAL PAGE REMOVED: ' + r.duplicates.join(', ');
-      if (r.warnings && r.warnings.length) d += ' || CHECK AMOUNTS: ' + r.warnings.join(' | ');
+      var d;
+      if (r.problems) d = r.problems.join(' | ');                       // real problem: left unchanged
+      else if (r.warnings && r.warnings.length) d = 'CHECK: ' + r.warnings.join(' | ');
+      else d = 'done';
+      if (!r.problems && r.duplicates && r.duplicates.length) d += (d === 'done' ? ' - ' : ' | ') + 'duplicate approval page removed ' + r.duplicates.join(', ');
       lines.push([fileName, r.order, r.serial == null ? '' : r.serial, r.status, r.approvals, d].map(csvCell).join(','));
     });
     return lines.join('\r\n');
