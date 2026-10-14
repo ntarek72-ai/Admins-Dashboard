@@ -61,6 +61,8 @@ p { margin: 0; }
 .chosen li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 12px; background: var(--bg); border-radius: 6px; font-size: 14px; min-width: 0; }
 .chosen li b { font-weight: 500; overflow-wrap: anywhere; }
 .chosen li i { font-style: normal; font-family: var(--mono); color: var(--muted); white-space: nowrap; font-size: 13px; }
+button.mini { padding: 2px 9px; min-width: 30px; font-size: 14px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+button.mini:disabled { opacity: .35; cursor: default; }
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
 label.check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
 label.check input { width: 16px; height: 16px; accent-color: var(--accent); }
@@ -113,10 +115,12 @@ td.num, th.num { text-align: right; font-family: var(--mono); }
   <section class="panel" aria-label="Upload">
     <label class="drop" id="drop" for="file">
       <strong>Drop the PDF here, or click to choose</strong>
-      <span>You can pick more than one file. Each file gets its own result.</span>
+      <span>You can pick more than one file. Each pick or drop is added to the list. If the list came out upside down, use the reverse button.</span>
       <input id="file" type="file" accept="application/pdf,.pdf" multiple>
     </label>
     <ul class="chosen" id="chosen" hidden></ul>
+    <p class="note" id="orderhint" hidden><b>The files are processed in the order shown above</b>, one after the other (numbering continues from one file to the next). Use the arrows to change the order, or ✕ to remove a file.</p>
+    <div class="row" id="revrow" hidden><button id="rev" type="button">⇅ Reverse the order of the list</button></div>
     <div class="row">
       <label class="check"><input type="checkbox" id="splitonly"> Also make a PDF with only the split orders</label>
       <button class="primary" id="run" disabled>Split receipts</button>
@@ -954,14 +958,30 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
   function size(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 
-  function setFiles(list) {
-    files = Array.prototype.filter.call(list, function (f) { return /\.pdf$/i.test(f.name) || f.type === 'application/pdf'; });
+  function renderList() {
     var ul = $('chosen'); ul.textContent = '';
-    files.forEach(function (f) { var li = el('li'); li.appendChild(el('b', null, f.name)); li.appendChild(el('i', null, size(f.size))); ul.appendChild(li); });
+    files.forEach(function (f, i) {
+      var li = el('li'); li.appendChild(el('b', null, (i + 1) + '.  ' + f.name)); li.appendChild(el('i', null, size(f.size)));
+      var up = el('button', 'mini', '↑'), dn = el('button', 'mini', '↓'), rm = el('button', 'mini', '✕');
+      up.title = 'Move up'; dn.title = 'Move down'; rm.title = 'Remove';
+      up.disabled = i === 0; dn.disabled = i === files.length - 1;
+      up.addEventListener('click', function () { files.splice(i - 1, 0, files.splice(i, 1)[0]); renderList(); });
+      dn.addEventListener('click', function () { files.splice(i + 1, 0, files.splice(i, 1)[0]); renderList(); });
+      rm.addEventListener('click', function () { files.splice(i, 1); renderList(); });
+      li.appendChild(up); li.appendChild(dn); li.appendChild(rm);
+      ul.appendChild(li);
+    });
     ul.hidden = !files.length;
+    $('orderhint').hidden = files.length < 2; $('revrow').hidden = files.length < 2;
     $('run').disabled = !files.length || running;
   }
-  $('file').addEventListener('change', function (e) { setFiles(e.target.files); });
+  $('rev').addEventListener('click', function () { files.reverse(); renderList(); });
+  function setFiles(list) {
+    var add = Array.prototype.filter.call(list, function (f) { return /\.pdf$/i.test(f.name) || f.type === 'application/pdf'; });
+    add.forEach(function (f) { if (!files.some(function (g) { return g.name === f.name && g.size === f.size && g.lastModified === f.lastModified; })) files.push(f); });
+    renderList();
+  }
+  $('file').addEventListener('change', function (e) { setFiles(e.target.files); e.target.value = ''; });
   var drop = $('drop');
   ['dragenter', 'dragover'].forEach(function (t) { drop.addEventListener(t, function (e) { e.preventDefault(); drop.classList.add('over'); }); });
   ['dragleave', 'drop'].forEach(function (t) { drop.addEventListener(t, function (e) { e.preventDefault(); drop.classList.remove('over'); }); });
@@ -1075,6 +1095,44 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
     }
   }
 
+  async function mergePdfs(list, label, st) {
+    var PL = window.PDFLib, merged = await PL.PDFDocument.create();
+    for (var i = 0; i < list.length; i++) {
+      st.textContent = 'Merging ' + (i + 1) + ' of ' + list.length + '...';
+      var src = await PL.PDFDocument.load(list[i], { updateMetadata: false });
+      var pgs = await merged.copyPages(src, src.getPageIndices());
+      pgs.forEach(function (p) { merged.addPage(p); });
+      src = null; pgs = null;
+    }
+    st.textContent = 'Saving...';
+    return merged.save();
+  }
+  function combinedCard(done) {
+    var sc = el('section', 'panel card'); sc.appendChild(el('h2', null, 'All ' + done.length + ' files together'));
+    var acts = el('div', 'actions'), st = el('p', 'saved'); st.setAttribute('role', 'status');
+    function addMerge(label, primary, pick, name) {
+      var b = el('button', primary ? 'primary' : '', label);
+      b.addEventListener('click', async function () {
+        b.disabled = true;
+        try { var mb = await mergePdfs(done.map(pick), label, st); var m = await save(name, new Blob([mb], { type: 'application/pdf' })); st.textContent = name + ' (' + done.length + ' files in one): ' + m; }
+        catch (e) { st.textContent = 'Could not merge: ' + ((e && e.message) || e); }
+        b.disabled = false;
+      });
+      acts.appendChild(b);
+    }
+    addMerge('Download all as one PDF', true, function (d) { return d.res.outBytes; }, 'split_all.pdf');
+    if (done.every(function (d) { return d.res.splitOnly; })) addMerge('Download all split orders only (one PDF)', false, function (d) { return d.res.splitOnly; }, 'split-orders-only_all.pdf');
+    var bc = el('button', '', 'Download combined report (CSV)');
+    bc.addEventListener('click', function () {
+      var parts = done.map(function (d, i) { var c = reportCsv(d.f.name, d.res.report).split('\r\n'); return i ? c.slice(1) : c; });
+      var lines = [].concat.apply([], parts);
+      save('report_all.csv', new Blob([lines.join('\r\n')], { type: 'text/csv' })).then(function (m) { st.textContent = 'report_all.csv: ' + m; });
+    });
+    acts.appendChild(bc);
+    sc.appendChild(acts); sc.appendChild(st);
+    return sc;
+  }
+
   $('numbering').addEventListener('change', function () {
     $('startno').disabled = !this.checked; $('startwrap').style.opacity = this.checked ? '1' : '.5';
   });
@@ -1083,6 +1141,7 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
     running = true; $('run').disabled = true;
     var out = $('results'); out.textContent = '';
     var splitOnly = $('splitonly').checked;
+    var done = [];
     var useNum = $('numbering').checked, nextNo = Math.max(0, parseInt($('startno').value, 10) || 0);
     for (var k = 0; k < files.length; k++) {
       var f = files[k];
@@ -1097,11 +1156,13 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
         });
         if (useNum && res.stats.nextSerial != null) nextNo = res.stats.nextSerial;   // several files: keep counting
         renderResult(card, f, res);
+        done.push({ f: f, res: res });
       } catch (e) {
         card.textContent = ''; card.appendChild(el('h2', null, f.name));
         card.appendChild(el('p', 'err', 'This file could not be processed: ' + ((e && e.message) || e) + '. If the PDF is password-protected or damaged, export it again from the system.'));
       }
     }
+    if (done.length > 1) out.insertBefore(combinedCard(done), out.firstChild);
     running = false; $('run').disabled = !files.length;
   });
 })();
