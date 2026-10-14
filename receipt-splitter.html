@@ -771,7 +771,7 @@ async function processPdf(fileBytes, opts) {
     }
     if (receipts.length === 0) {
       keepRaw();
-      report.push({ order: label, status: 'UNCHANGED - needs review', problems: ['no approval pages found after the invoice'], approvals: 0 });
+      report.push({ order: label, status: 'UNCHANGED - needs review', problems: ['receipt has no approval'], approvals: 0 });
       continue;
     }
 
@@ -824,7 +824,7 @@ async function processPdf(fileBytes, opts) {
             });
           });
         }
-        if (!problems.length && left.length) warnings.push(`no approval found for: ${left.map(i => an.rows[i].name).join('; ')} (put on a separate invoice at the end)`);
+        if (!problems.length && left.length) warnings.push(`items with no approval: ${left.map(i => an.rows[i].name).join('; ')} (put on a separate invoice at the end)`);
         if (!problems.length) {
           const t_ = an.rows.reduce((p, r) => p + r.total, 0), d_ = an.rows.reduce((p, r) => p + r.disc, 0);
           if (Math.abs(cents(t_) - cents(an.total)) > 200) problems.push(`total: items add up to ${fmtMicro(t_)} but invoice says ${fmtMicro(an.total)}`);
@@ -906,7 +906,42 @@ async function processPdf(fileBytes, opts) {
            warned: report.filter(r => r.warnings && r.warnings.length).length } };
 }
 
-root.SplitCore = { processPdf, _t: { analyzeInvoice, buildInvoice, tokenize, parseToUnicode, toMicro, fmtMicro, scan: scanPage, pageText } };
+
+// Numbering only: stamps the invoice pages of every order (all invoices of one order share a number), nothing else changes
+async function numberPdf(fileBytes, opts) {
+  opts = opts || {};
+  const L = opts.PDFLib || root.PDFLib;
+  const progress = opts.onProgress || (() => {});
+  const doc = await L.PDFDocument.load(fileBytes, { updateMetadata: false, throwOnInvalidObject: false });
+  const ctx = doc.context, pages = doc.getPages(), N = pages.length;
+  const start = Math.max(0, Math.floor(Number(opts.start) || 0));
+  let cur = null, lastOrder = null, inInvoice = false, orders = 0, first = null, stamped = 0;
+  for (let i = 0; i < N; i++) {
+    const text = pageText(scanPage(L, ctx, pages[i]));
+    if (/Pharmacy Invoice/.test(text)) {
+      inInvoice = true;
+      const ord = (/Order Number:?\s*(\S+)/.exec(text) || [])[1] || null;
+      if (cur === null || !ord || ord !== lastOrder) { cur = cur === null ? start : cur + 1; orders++; if (first === null) first = cur; }
+      lastOrder = ord;
+    } else if (/Reciept #/.test(text)) inInvoice = false;
+    if (inInvoice && cur !== null) {
+      const pg = pages[i], sz = pg.getSize();
+      const old = pg.node.get(L.PDFName.of('Contents'));
+      const olds = old instanceof L.PDFArray ? old.asArray() : (old ? [old] : []);
+      const qRef = ctx.register(ctx.flateStream(enc('q\n')));
+      const sRef = ctx.register(ctx.flateStream(enc('Q\n' + stampContent(cur, sz.width, sz.height))));
+      pg.node.set(L.PDFName.of('Contents'), ctx.obj([qRef, ...olds, sRef]));
+      stamped++;
+    }
+    if (i % 25 === 0) { progress({ phase: 'Numbering pages', done: i, total: N }); await tick(); }
+  }
+  progress({ phase: 'Writing PDF', done: N, total: N });
+  await tick();
+  const outBytes = await doc.save({ useObjectStreams: false });
+  return { outBytes, orders, first, last: cur, stamped, next: cur === null ? start : cur + 1 };
+}
+
+root.SplitCore = { processPdf, numberPdf, _t: { analyzeInvoice, buildInvoice, tokenize, parseToUnicode, toMicro, fmtMicro, scan: scanPage, pageText } };
 if (typeof module !== 'undefined') module.exports = root.SplitCore;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
