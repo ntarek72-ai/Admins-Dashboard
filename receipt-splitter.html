@@ -738,11 +738,17 @@ function beneficiaryInfo(text) {
   const m = /^(\d+)\s*\/\s*(.*)$/.exec(rest);
   return m ? { card: m[1], name: m[2].trim() || null } : { card: null, name: rest || null };
 }
-// true when this approval clearly belongs to another patient
+// true only when this approval surely belongs to another patient:
+//  - both sides show a card number and the numbers differ, or
+//  - a card number is missing on one side and the names (same script) share no word at all
 function wrongApproval(invText, apprText) {
   const p = patientInfo(invText), b = beneficiaryInfo(apprText);
-  if (p.card && b.card && p.card !== b.card) return true;
-  if (p.name && b.name && ((isArabic(p.name) && isArabic(b.name)) || (isLatin(p.name) && isLatin(b.name) && !isArabic(p.name) && !isArabic(b.name)))) return !sameWords(p.name, b.name);
+  const cn = x => String(x).replace(/^0+/, '');
+  if (p.card && b.card) return cn(p.card) !== cn(b.card);
+  if (p.name && b.name && ((isArabic(p.name) && isArabic(b.name)) || (isLatin(p.name) && isLatin(b.name) && !isArabic(p.name) && !isArabic(b.name)))) {
+    const A = nameTokens(p.name), B = nameTokens(b.name);
+    if (A.length && B.length && !sameWords(p.name, b.name) && !A.some(t => B.some(u => sameWord(t, u) || sameWord(t, rev(u))))) return true;
+  }
   return false;
 }
 
@@ -771,10 +777,11 @@ function approvalRows(L, ctx, pages, idxs) {
     const colOfRun = r => { const c = cen(r); let best = null; centers.forEach(h => { if (!best || Math.abs(h.c - c) < Math.abs(best.c - c)) best = h; }); return best.name; };
     const body = runs.filter(r => r.top > headTop + 2);
     const qtys = body.filter(r => colOfRun(r) === 'Qty' && /^\d+(?:\.\d+)?\s*\/\s*\S/.test(r.text.trim())).sort((a, b) => a.top - b.top);
-    const mine = qtys.map(r => ({ qty: parseFloat(r.text), name: [], dis: null, top: r.top }));
+    const mine = qtys.map(r => ({ qty: parseFloat(r.text), name: [], unitR: [], disR: [], netR: [], statR: [], top: r.top }));
     const nearest = r => { let b = null; mine.forEach(m => { if (!b || Math.abs(m.top - r.top) < Math.abs(b.top - r.top)) b = m; }); return b && Math.abs(b.top - r.top) <= 14 ? b : null; };
-    body.forEach(r => { const c = colOfRun(r); if (c === 'Name') { const m = nearest(r); if (m) m.name.push(r); } });
-    mine.forEach(m => { m.nameText = m.name.sort((a, b) => a.top - b.top || a.x - b.x).map(r => r.text.trim()).join(' '); m.tokens = wordTokens(m.nameText); rows.push(m); });
+    body.forEach(r => { const c = colOfRun(r); const m = (c === 'Name' || c === 'Dis.' || c === 'Net' || c === 'Status') ? nearest(r) : null; if (!m) return; if (c === 'Name') m.name.push(r); else if (c === 'Dis.') m.disR.push(r); else if (c === 'Net') m.netR.push(r); else m.statR.push(r); });
+    const numOf = rs => toMicro(rs.sort((a, b) => a.top - b.top).map(r => r.text.trim()).join(''));
+    mine.forEach(m => { const nt = numOf(m.netR), dt = numOf(m.disR); m.gross = nt !== null && dt !== null ? nt + dt : null; m.status = m.statR.map(r => r.text.trim()).join(' '); m.bad = /deleted|rejected|replaced|cancel/i.test(m.status); m.nameText = m.name.sort((a, b) => a.top - b.top || a.x - b.x).map(r => r.text.trim()).join(' '); m.tokens = wordTokens(m.nameText); rows.push(m); });
   }
   return rows;
 }
@@ -793,6 +800,15 @@ function rowsFor(tk, rows) {
     if (hits.length === 1) break;
   }
   return hits;
+}
+// how many invoice items have a different price (more than 2 EGP) in this approval
+function priceMismatches(an, rows) {
+  let mm = 0;
+  an.rows.forEach(row => {
+    const m = rowsFor(wordTokens(row.name), rows);
+    if (m.length === 1 && rows[m[0]].gross !== null && Math.abs(cents(rows[m[0]].gross) - cents(row.total)) > 200) mm++;
+  });
+  return mm;
 }
 const fmt3 = micro => { const m = Math.round(micro / 1000), ip = Math.floor(m / 1000), fr = String(m % 1000).padStart(3, '0'); return String(ip).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + fr; };
 // a copy of an invoice row that shows only `qty` of the item (quantity, total and discount rewritten in place)
@@ -892,56 +908,65 @@ async function processPdf(fileBytes, opts) {
       const text = pgs.map(i => info[i].text).join('\n');
       return { pages: pgs, text, id: (/Reciept #(\d+)/.exec(text) || [])[1] };
     });
-    const receipts = [], dups = []; let dupClash = null;
+    const receipts = [], dups = [], alts = {};       // alts: same approval number twice with different content
     all.forEach(rc => {
       const same = rc.id ? receipts.find(r => r.id === rc.id) : null;
-      if (!same) receipts.push(rc);
-      else if (norm(same.text) === norm(rc.text)) dups.push(rc);
-      else dupClash = rc.id;
+      if (!same) { receipts.push(rc); return; }
+      const list = alts[rc.id] || [same];
+      if (list.some(x => norm(x.text) === norm(rc.text))) dups.push(rc);
+      else { list.push(rc); alts[rc.id] = list; }
     });
     dupTotal += dups.length;
-    const dupNote = dups.length ? { duplicates: dups.map(d => '#' + d.id) } : {};
+    const problems = [], warnings = [];
+    // approvals that belong to another patient are taken out of the file
+    const removed = [];
+    for (let k = receipts.length - 1; k >= 0; k--) {
+      if (wrongApproval(info[s].text, receipts[k].text)) { removed.unshift(receipts[k]); delete alts[receipts[k].id]; receipts.splice(k, 1); }
+    }
     const keepOrder = () => {
       for (let i = s; i < invEnd; i++) plan.push(mk(i, true));
       receipts.forEach(rc => rc.pages.forEach(i => plan.push(mk(i, false))));
     };
-    if (dupClash) {
-      keepRaw();
-      report.push({ order: label, status: 'UNCHANGED - needs review', problems: [`approval #${dupClash} appears twice but the two pages are not identical`], approvals: all.length });
-      continue;
-    }
     if (receipts.length === 0) {
+      if (removed.length) {
+        for (let i = s; i < invEnd; i++) plan.push(mk(i, true));
+        report.push({ order: label, status: 'UNCHANGED - needs review', problems: ['receipt has no approval'], approvals: all.length, serial: stamp });
+        continue;
+      }
       keepRaw();
       report.push({ order: label, status: 'UNCHANGED - needs review', problems: ['receipt has no approval'], approvals: 0 });
       continue;
     }
 
-    {
-      const bad = receipts.filter(rc => wrongApproval(info[s].text, rc.text));
-      if (bad.length) {
-        keepRaw();
-        report.push({ order: label, status: 'UNCHANGED - needs review', problems: ['Wrong approval attached: ' + bad.map(r => '#' + r.id).join(', ') + ' (the patient on the approval is not the patient on the receipt)'], approvals: all.length });
-        continue;
-      }
-    }
-
-    const problems = [], warnings = [];
     let an = null, groups = null, left = [], quiet = null, trivial = false;
-    const derived = [], aRowsCache = {};
+    const derived = [], aRowsCache = {}; let clashDone = false;
     const rowAt = i => i < an.rows.length ? an.rows[i] : derived[i - an.rows.length];
-    const aRowsOf = k => aRowsCache[k] || (aRowsCache[k] = approvalRows(L, ctx, pages, receipts[k].pages));
+    const aAll = k => aRowsCache[k] || (aRowsCache[k] = approvalRows(L, ctx, pages, receipts[k].pages));
+    const aRowsOf = k => aAll(k).filter(r => !r.bad);
     try {
       const scans = []; for (let i = s; i < invEnd; i++) { if (!info[i].inv) throw new Error('could not read an invoice page'); scans.push(scanPage(L, ctx, pages[i])); }
       an = analyzeInvoice(scans, info[s].text);
-      const nItems = receipts.map(rc => grabNum(rc.text, /No\. Of Items\s*:\s*(\d+)/));
+      Object.keys(alts).forEach(id => {      // the same approval twice with different content: keep the one whose prices match the receipt
+        const sc = alts[id].map(c => ({ c, mm: priceMismatches(an, approvalRows(L, ctx, pages, c.pages).filter(r => !r.bad)) }));
+        const ok = sc.filter(x => x.mm === 0);
+        if (ok.length === 1 && sc.length > 1) {
+          const at = receipts.findIndex(r => r.id === id); receipts[at] = ok[0].c;
+          sc.forEach(x => { if (x.c !== ok[0].c) { dups.push(x.c); dupTotal++; } });
+        } else problems.push(`approval #${id} appears twice but the two pages are not identical`);
+      });
+      clashDone = true;
+      if (!problems.length) {
+      const nItems = receipts.map(rc => (grabNum(rc.text, /Approved Items\s*:\s*(\d+)/) ?? grabNum(rc.text, /No\. Of Items\s*:\s*(\d+)/)));
       if (receipts.length === 1 && nItems[0] !== null && nItems[0] / 1e6 === an.rows.length) trivial = true;   // one approval, same number of items: nothing to do
       if (!trivial) {
         const tokens = t => t.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-        const itemTokens = receipts.map(r => {
+        const withPairs = ts => ts.concat(ts.slice(1).map((t, i) => ts[i] + t));       // "20 mg" is also read as "20mg"
+        const itemTokens = receipts.map((r, k) => {
+          if (/Deleted|Rejected|Replaced|Cancel/i.test(r.text) && aAll(k).length) return withPairs([].concat(...aRowsOf(k).map(x => x.tokens)));   // lines marked deleted/rejected/replaced do not count
           let t = r.text;
           const h = /Dis\.\s+Cop\.\s+Net\s+Status/.exec(t); if (h) t = t.slice(h.index + h[0].length);
           const n = t.search(/No\. Of Items/); if (n >= 0) t = t.slice(0, n);
-          return tokens(t);
+          return withPairs(tokens(t));
         });
         groups = receipts.map(() => []);
         const has = (ts, key) => ts.some(t => t === key || (t.length >= 5 && key.length >= 5 && (t.startsWith(key) || key.startsWith(t))));
@@ -991,8 +1016,10 @@ async function processPdf(fileBytes, opts) {
         // dry-run the rebuild so that any font/glyph/space problem is caught before anything is written
         if (!problems.length) { groups.forEach(g => buildInvoice(an, g.map(rowAt))); if (left.length) buildInvoice(an, left.map(i => an.rows[i])); }
       }
+      }
     } catch (ex) {
-      if (receipts.length === 1) quiet = ex.message || String(ex); else problems.push(ex.message || String(ex));
+      if (Object.keys(alts).length && !clashDone) Object.keys(alts).forEach(id => problems.push(`approval #${id} appears twice but the two pages are not identical`));
+      else if (receipts.length === 1) quiet = ex.message || String(ex); else problems.push(ex.message || String(ex));
     }
 
     if (problems.length) {
@@ -1003,7 +1030,7 @@ async function processPdf(fileBytes, opts) {
     const doSplit = !trivial && !quiet && (receipts.length > 1 || left.length > 0);
     if (!doSplit) {
       keepOrder();
-      report.push({ order: label, status: 'unchanged', note: quiet ? 'one approval (not checked: ' + quiet + ')' : 'one approval only', approvals: receipts.length, serial: stamp, ...dupNote });
+      report.push({ order: label, status: 'unchanged', note: quiet ? 'one approval (not checked: ' + quiet + ')' : 'one approval only', approvals: receipts.length, serial: stamp, warnings });
       continue;
     }
     const detail = []; let sc = 0, sd = 0, sn = 0;
@@ -1020,7 +1047,7 @@ async function processPdf(fileBytes, opts) {
     groups.forEach((g, k) => emit(g.map(rowAt), receipts[k]));
     if (left.length) emit(left.map(i => an.rows[i]), null);        // items with no approval: their own invoice at the end
     nSplit++;
-    report.push({ order: label, status: 'split', approvals: receipts.length, noApprovalItems: left.length, receipts: detail, warnings, serial: stamp, ...dupNote,
+    report.push({ order: label, status: 'split', approvals: receipts.length, noApprovalItems: left.length, receipts: detail, warnings, serial: stamp,
                   check: `${fmtCents(sc)} / ${fmtCents(sd)} / ${fmtCents(sn)}  vs original ${fmtMicro(an.total)} / ${fmtMicro(an.disc)} / ${fmtMicro(an.net === null ? an.total - an.disc : an.net)}` });
     if (oi % 10 === 0) { progress({ phase: 'Checking orders', done: oi, total: orders.length }); await tick(); }
   }
