@@ -822,10 +822,9 @@ async function processPdf(fileBytes, opts) {
             const sel = g.map(i => an.rows[i]);
             const gross = grabNum(rc.text, /Gross Amount\s*:\s*([\d,.]+)/), disc = grabNum(rc.text, /Discount Amount\s*:\s*([\d,.]+)/), netv = grabNum(rc.text, /Net Amount\s*:\s*([\d,.]+)/);
             const t_ = sel.reduce((p, r) => p + r.total, 0), d_ = sel.reduce((p, r) => p + r.disc, 0);
-            if (nItems[k] !== null && nItems[k] / 1e6 !== sel.length) warnings.push(`approval #${rc.id} lists ${nItems[k] / 1e6} item${nItems[k] / 1e6 === 1 ? '' : 's'} but ${sel.length} invoice item${sel.length === 1 ? '' : 's'} matched it (check the quantities dispensed)`);
           });
         }
-        if (!problems.length && left.length) warnings.push(`items with no approval: ${left.map(i => an.rows[i].name).join('; ')} (put on a separate invoice at the end)`);
+        if (!problems.length && left.length) warnings.push(`receipt without approval: these items are not in any approval - ${left.map(i => an.rows[i].name).join('; ')}`);
         if (!problems.length) {
           const t_ = an.rows.reduce((p, r) => p + r.total, 0), d_ = an.rows.reduce((p, r) => p + r.disc, 0);
           if (Math.abs(cents(t_) - cents(an.total)) > 200) problems.push(`total: items add up to ${fmtMicro(t_)} but invoice says ${fmtMicro(an.total)}`);
@@ -1007,7 +1006,6 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
       if (r.problems) d = r.problems.join(' | ');                       // real problem: left unchanged
       else if (r.warnings && r.warnings.length) d = 'CHECK: ' + r.warnings.join(' | ');
       else d = 'done';
-      if (!r.problems && r.duplicates && r.duplicates.length) d += (d === 'done' ? ' - ' : ' | ') + 'duplicate approval page removed ' + r.duplicates.join(', ');
       lines.push([fileName, r.order, r.serial == null ? '' : r.serial, r.status, r.approvals, d].map(csvCell).join(','));
     });
     return lines.join('\r\n');
@@ -1064,9 +1062,8 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
       });
       wb.appendChild(wl); card.appendChild(wb);
     }
-    if (st.duplicatesRemoved) card.appendChild(el('p', 'note', st.duplicatesRemoved + (st.duplicatesRemoved === 1 ? ' duplicate approval page was' : ' duplicate approval pages were') + ' removed (same approval number and identical content). They are listed in the CSV report.'));
     var noApp = rep.filter(function (r) { return r.noApprovalItems; });
-    if (noApp.length) card.appendChild(el('p', 'note', noApp.length + (noApp.length === 1 ? ' order has' : ' orders have') + ' items with no approval: they got their own invoice at the end of the order, with no approval page.'));
+    if (noApp.length) card.appendChild(el('p', 'note', noApp.length + (noApp.length === 1 ? ' order has' : ' orders have') + ' a receipt without approval: its items are not in any approval, so they got their own invoice at the end of the order, with no approval page.'));
     var single = rep.filter(function (r) { return r.status === 'unchanged'; }).length;
     if (single) card.appendChild(el('p', 'note', single + (single === 1 ? ' order has' : ' orders have') + ' a single approval and stayed as it is.'));
 
