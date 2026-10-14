@@ -118,11 +118,12 @@ table.sum { margin-top: 8px; }
   <section class="panel" aria-label="Upload">
     <label class="drop" id="drop" for="file">
       <strong>Drop the PDF here, or click to choose</strong>
-      <span>Pick all the files you want numbered. Each time you pick or drop files they are added to the list, in that order.</span>
+      <span>Pick all the files you want numbered. Each time you pick or drop files they are added to the list. If the list came out upside down, use the reverse button.</span>
       <input id="file" type="file" accept="application/pdf,.pdf" multiple>
     </label>
     <ul class="chosen" id="chosen" hidden></ul>
     <p class="note" id="orderhint" hidden><b>The files are numbered in the order shown above</b>, one after the other: the first file starts at the number you type, and each next file continues right after the last number of the one before. Use the arrows to change the order, or ✕ to remove a file.</p>
+    <div class="row" id="revrow" hidden><button id="rev" type="button">⇅ Reverse the order of the list</button></div>
     <div class="row">
       <label class="check">Start numbering from <input type="number" id="startno" min="0" step="1" value="1" style="width:100px;padding:6px 8px;font:inherit;border:1px solid var(--line);border-radius:6px;background:transparent;color:inherit"></label>
       <button class="primary" id="run" disabled>Add numbers</button>
@@ -972,9 +973,10 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
       ul.appendChild(li);
     });
     ul.hidden = !files.length;
-    $('orderhint').hidden = files.length < 2;
+    $('orderhint').hidden = files.length < 2; $('revrow').hidden = files.length < 2;
     $('run').disabled = !files.length || running;
   }
+  $('rev').addEventListener('click', function () { files.reverse(); renderList(); });
   function setFiles(list) {
     var add = Array.prototype.filter.call(list, function (f) { return /\.pdf$/i.test(f.name) || f.type === 'application/pdf'; });
     add.forEach(function (f) { if (!files.some(function (g) { return g.name === f.name && g.size === f.size && g.lastModified === f.lastModified; })) files.push(f); });
