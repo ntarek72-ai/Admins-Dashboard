@@ -118,16 +118,15 @@ table.sum { margin-top: 8px; }
   <section class="panel" aria-label="Upload">
     <label class="drop" id="drop" for="file">
       <strong>Drop the PDF here, or click to choose</strong>
-      <span>You can pick more than one file. Numbering continues from one file to the next.</span>
+      <span>Pick all the files you want numbered. Each time you pick or drop files they are added to the list, in that order.</span>
       <input id="file" type="file" accept="application/pdf,.pdf" multiple>
     </label>
     <ul class="chosen" id="chosen" hidden></ul>
-    <p class="note" id="orderhint" hidden><b>The files are numbered in the order shown above</b>, one after the other (the second file starts right after the last number of the first). Use the arrows to change the order.</p>
+    <p class="note" id="orderhint" hidden><b>The files are numbered in the order shown above</b>, one after the other: the first file starts at the number you type, and each next file continues right after the last number of the one before. Use the arrows to change the order, or ✕ to remove a file.</p>
     <div class="row">
       <label class="check">Start numbering from <input type="number" id="startno" min="0" step="1" value="1" style="width:100px;padding:6px 8px;font:inherit;border:1px solid var(--line);border-radius:6px;background:transparent;color:inherit"></label>
       <button class="primary" id="run" disabled>Add numbers</button>
     </div>
-    <p class="note" id="lasthint" hidden></p>
     <p class="note">The file is processed inside this browser tab and is never uploaded. Nothing else in the PDF is changed.</p>
   </section>
 
@@ -977,10 +976,11 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
     $('run').disabled = !files.length || running;
   }
   function setFiles(list) {
-    files = Array.prototype.filter.call(list, function (f) { return /\.pdf$/i.test(f.name) || f.type === 'application/pdf'; }).sort(natural);
+    var add = Array.prototype.filter.call(list, function (f) { return /\.pdf$/i.test(f.name) || f.type === 'application/pdf'; });
+    add.forEach(function (f) { if (!files.some(function (g) { return g.name === f.name && g.size === f.size && g.lastModified === f.lastModified; })) files.push(f); });
     renderList();
   }
-  $('file').addEventListener('change', function (e) { setFiles(e.target.files); });
+  $('file').addEventListener('change', function (e) { setFiles(e.target.files); e.target.value = ''; });
   var drop = $('drop');
   ['dragenter', 'dragover'].forEach(function (t) { drop.addEventListener(t, function (e) { e.preventDefault(); drop.classList.add('over'); }); });
   ['dragleave', 'drop'].forEach(function (t) { drop.addEventListener(t, function (e) { e.preventDefault(); drop.classList.remove('over'); }); });
@@ -1004,35 +1004,11 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
   function baseName(n) { return n.replace(/\.pdf$/i, ''); }
   function pill(text, cls) { return el('span', 'pill' + (cls ? ' ' + cls : ''), text); }
 
-  // remember where the last run stopped (this browser only) so a wrong start number is easy to spot
-  var LS = 'receiptNumbering.last';
-  function readLast() { try { var v = JSON.parse(localStorage.getItem(LS) || 'null'); return v && typeof v.last === 'number' ? v : null; } catch (e) { return null; } }
-  function writeLast(v) { try { localStorage.setItem(LS, JSON.stringify(v)); } catch (e) { /* storage may be blocked */ } }
-  function showLast() {
-    var v = readLast(), p = $('lasthint'); p.textContent = '';
-    if (!v) { p.hidden = true; return; }
-    p.hidden = false;
-    p.appendChild(document.createTextNode('Last run in this browser ended at ' + v.last + ' (' + v.when + '). '));
-    var b = el('button', 'mini', 'Start from ' + (v.last + 1)); b.style.padding = '3px 10px';
-    b.addEventListener('click', function () { $('startno').value = v.last + 1; check(); });
-    p.appendChild(b);
-    var w = el('span', null, ''); w.id = 'startwarn'; w.style.marginLeft = '8px'; w.style.color = 'var(--bad)'; p.appendChild(w);
-  }
-  function check() {
-    var v = readLast(), w = $('startwarn'); if (!v || !w) return;
-    var n = parseInt($('startno').value, 10);
-    w.textContent = (n !== v.last + 1) ? 'The start number you typed (' + n + ') is not the one after the last run (' + (v.last + 1) + ').' : '';
-  }
-  $('startno').addEventListener('input', check);
-  showLast(); check();
-
   function csvCell(v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
 
   $('run').addEventListener('click', async function () {
     if (running || !files.length) return;
     var startN = Math.max(0, parseInt($('startno').value, 10) || 0);
-    var last = readLast();
-    if (last && startN !== last.last + 1 && !window.confirm('The last run in this browser ended at ' + last.last + ', so the next number would be ' + (last.last + 1) + '. You typed ' + startN + '.\n\nPress OK to continue with ' + startN + ', or Cancel to change it.')) return;
     running = true; $('run').disabled = true;
     var out = $('results'); out.textContent = '';
     var next = startN, done = [];
@@ -1096,10 +1072,8 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
         acts.insertBefore(ba, bc);
       }
       sc.appendChild(acts); sc.appendChild(st2);
-      sc.appendChild(el('p', 'note', 'The next file or batch should start at ' + next + '. This browser will suggest it next time.'));
+      sc.appendChild(el('p', 'note', 'Numbers used: ' + startN + ' to ' + (next - 1) + '.'));
       out.insertBefore(sc, out.firstChild);
-      var used = done.filter(function (d) { return d.res.orders; });
-      if (used.length) { writeLast({ last: next - 1, when: new Date().toLocaleString() }); showLast(); check(); }
     }
     running = false; $('run').disabled = !files.length;
   });
