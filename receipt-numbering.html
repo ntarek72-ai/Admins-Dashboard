@@ -100,6 +100,11 @@ th { font-weight: 600; color: var(--muted); white-space: nowrap; }
 td.num, th.num { text-align: right; font-family: var(--mono); }
 .err { color: var(--bad); background: var(--bad-soft); padding: 10px 14px; border-radius: 8px; font-size: 14px; overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+ul.chosen li { display: flex; align-items: center; gap: 8px; }
+ul.chosen li b { flex: 1; overflow-wrap: anywhere; }
+button.mini { padding: 2px 9px; min-width: 30px; font-size: 14px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+button.mini:disabled { opacity: .35; cursor: default; }
+table.sum { margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -117,10 +122,12 @@ td.num, th.num { text-align: right; font-family: var(--mono); }
       <input id="file" type="file" accept="application/pdf,.pdf" multiple>
     </label>
     <ul class="chosen" id="chosen" hidden></ul>
+    <p class="note" id="orderhint" hidden><b>The files are numbered in the order shown above</b>, one after the other (the second file starts right after the last number of the first). Use the arrows to change the order.</p>
     <div class="row">
       <label class="check">Start numbering from <input type="number" id="startno" min="0" step="1" value="1" style="width:100px;padding:6px 8px;font:inherit;border:1px solid var(--line);border-radius:6px;background:transparent;color:inherit"></label>
       <button class="primary" id="run" disabled>Add numbers</button>
     </div>
+    <p class="note" id="lasthint" hidden></p>
     <p class="note">The file is processed inside this browser tab and is never uploaded. Nothing else in the PDF is changed.</p>
   </section>
 
@@ -767,7 +774,7 @@ async function processPdf(fileBytes, opts) {
     }
     if (receipts.length === 0) {
       keepRaw();
-      report.push({ order: label, status: 'UNCHANGED - needs review', problems: ['no approval pages found after the invoice'], approvals: 0 });
+      report.push({ order: label, status: 'UNCHANGED - needs review', problems: ['receipt has no approval'], approvals: 0 });
       continue;
     }
 
@@ -820,7 +827,7 @@ async function processPdf(fileBytes, opts) {
             });
           });
         }
-        if (!problems.length && left.length) warnings.push(`no approval found for: ${left.map(i => an.rows[i].name).join('; ')} (put on a separate invoice at the end)`);
+        if (!problems.length && left.length) warnings.push(`items with no approval: ${left.map(i => an.rows[i].name).join('; ')} (put on a separate invoice at the end)`);
         if (!problems.length) {
           const t_ = an.rows.reduce((p, r) => p + r.total, 0), d_ = an.rows.reduce((p, r) => p + r.disc, 0);
           if (Math.abs(cents(t_) - cents(an.total)) > 200) problems.push(`total: items add up to ${fmtMicro(t_)} but invoice says ${fmtMicro(an.total)}`);
@@ -950,12 +957,28 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
   function size(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 
-  function setFiles(list) {
-    files = Array.prototype.filter.call(list, function (f) { return /\.pdf$/i.test(f.name) || f.type === 'application/pdf'; });
+  function natural(a, b) { return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }); }
+  function renderList() {
     var ul = $('chosen'); ul.textContent = '';
-    files.forEach(function (f) { var li = el('li'); li.appendChild(el('b', null, f.name)); li.appendChild(el('i', null, size(f.size))); ul.appendChild(li); });
+    files.forEach(function (f, i) {
+      var li = el('li');
+      li.appendChild(el('b', null, (i + 1) + '.  ' + f.name)); li.appendChild(el('i', null, size(f.size)));
+      var up = el('button', 'mini', '↑'), dn = el('button', 'mini', '↓'), rm = el('button', 'mini', '✕');
+      up.title = 'Move up'; dn.title = 'Move down'; rm.title = 'Remove';
+      up.disabled = i === 0; dn.disabled = i === files.length - 1;
+      up.addEventListener('click', function () { files.splice(i - 1, 0, files.splice(i, 1)[0]); renderList(); });
+      dn.addEventListener('click', function () { files.splice(i + 1, 0, files.splice(i, 1)[0]); renderList(); });
+      rm.addEventListener('click', function () { files.splice(i, 1); renderList(); });
+      li.appendChild(up); li.appendChild(dn); li.appendChild(rm);
+      ul.appendChild(li);
+    });
     ul.hidden = !files.length;
+    $('orderhint').hidden = files.length < 2;
     $('run').disabled = !files.length || running;
+  }
+  function setFiles(list) {
+    files = Array.prototype.filter.call(list, function (f) { return /\.pdf$/i.test(f.name) || f.type === 'application/pdf'; }).sort(natural);
+    renderList();
   }
   $('file').addEventListener('change', function (e) { setFiles(e.target.files); });
   var drop = $('drop');
@@ -981,11 +1004,38 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
   function baseName(n) { return n.replace(/\.pdf$/i, ''); }
   function pill(text, cls) { return el('span', 'pill' + (cls ? ' ' + cls : ''), text); }
 
+  // remember where the last run stopped (this browser only) so a wrong start number is easy to spot
+  var LS = 'receiptNumbering.last';
+  function readLast() { try { var v = JSON.parse(localStorage.getItem(LS) || 'null'); return v && typeof v.last === 'number' ? v : null; } catch (e) { return null; } }
+  function writeLast(v) { try { localStorage.setItem(LS, JSON.stringify(v)); } catch (e) { /* storage may be blocked */ } }
+  function showLast() {
+    var v = readLast(), p = $('lasthint'); p.textContent = '';
+    if (!v) { p.hidden = true; return; }
+    p.hidden = false;
+    p.appendChild(document.createTextNode('Last run in this browser ended at ' + v.last + ' (' + v.when + '). '));
+    var b = el('button', 'mini', 'Start from ' + (v.last + 1)); b.style.padding = '3px 10px';
+    b.addEventListener('click', function () { $('startno').value = v.last + 1; check(); });
+    p.appendChild(b);
+    var w = el('span', null, ''); w.id = 'startwarn'; w.style.marginLeft = '8px'; w.style.color = 'var(--bad)'; p.appendChild(w);
+  }
+  function check() {
+    var v = readLast(), w = $('startwarn'); if (!v || !w) return;
+    var n = parseInt($('startno').value, 10);
+    w.textContent = (n !== v.last + 1) ? 'The start number you typed (' + n + ') is not the one after the last run (' + (v.last + 1) + ').' : '';
+  }
+  $('startno').addEventListener('input', check);
+  showLast(); check();
+
+  function csvCell(v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+
   $('run').addEventListener('click', async function () {
     if (running || !files.length) return;
+    var startN = Math.max(0, parseInt($('startno').value, 10) || 0);
+    var last = readLast();
+    if (last && startN !== last.last + 1 && !window.confirm('The last run in this browser ended at ' + last.last + ', so the next number would be ' + (last.last + 1) + '. You typed ' + startN + '.\n\nPress OK to continue with ' + startN + ', or Cancel to change it.')) return;
     running = true; $('run').disabled = true;
     var out = $('results'); out.textContent = '';
-    var next = Math.max(0, parseInt($('startno').value, 10) || 0);
+    var next = startN, done = [];
     for (var k = 0; k < files.length; k++) {
       var f = files[k];
       var card = el('section', 'panel card'); card.appendChild(el('h2', null, f.name));
@@ -998,6 +1048,8 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
           onProgress: function (p) { phase.textContent = p.phase + ' ' + p.done + ' / ' + p.total; fill.style.width = (p.total ? Math.round(100 * p.done / p.total) : 0) + '%'; }
         });
         next = res.next;
+        var nm = baseName(f.name) + '_numbered.pdf';
+        done.push({ name: f.name, out: nm, res: res });
         card.textContent = '';
         var head = el('div', 'card-head'); head.appendChild(el('h2', null, f.name));
         var stats = el('div', 'stats');
@@ -1007,15 +1059,47 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
         head.appendChild(stats); card.appendChild(head);
         var status = el('p', 'saved'); status.setAttribute('role', 'status');
         var actions = el('div', 'actions');
-        var b = el('button', 'primary', 'Download numbered PDF');
-        b.addEventListener('click', function () { b.disabled = true; var nm = baseName(f.name) + '_numbered.pdf'; save(nm, new Blob([res.outBytes], { type: 'application/pdf' })).then(function (m) { status.textContent = nm + ': ' + m; b.disabled = false; }); });
-        actions.appendChild(b); card.appendChild(actions); card.appendChild(status);
-        if (res.orders) card.appendChild(el('p', 'note', 'The next file would start at ' + res.next + '.'));
-        else card.appendChild(el('p', 'note', 'No invoice pages ("Pharmacy Invoice") were found, so the file is unchanged.'));
+        (function (res, nm, status) {
+          var b = el('button', 'primary', 'Download numbered PDF');
+          b.addEventListener('click', function () { b.disabled = true; save(nm, new Blob([res.outBytes], { type: 'application/pdf' })).then(function (m) { status.textContent = nm + ': ' + m; b.disabled = false; }); });
+          actions.appendChild(b);
+        })(res, nm, status);
+        card.appendChild(actions); card.appendChild(status);
+        if (!res.orders) card.appendChild(el('p', 'note', 'No invoice pages ("Pharmacy Invoice") were found, so this file is unchanged and used no numbers.'));
       } catch (e) {
         card.textContent = ''; card.appendChild(el('h2', null, f.name));
-        card.appendChild(el('p', 'err', 'This file could not be processed: ' + ((e && e.message) || e) + '.'));
+        card.appendChild(el('p', 'err', 'This file could not be processed: ' + ((e && e.message) || e) + '. Numbering stopped here so the numbers stay in sequence.'));
+        break;
       }
+    }
+    if (done.length) {
+      var sc = el('section', 'panel card'); sc.appendChild(el('h2', null, 'Summary'));
+      var tw = el('div', 'tablewrap'), tb = el('table', 'sum'), th = el('thead'), hr = el('tr');
+      ['#', 'File', 'From', 'To', 'Orders'].forEach(function (h, i) { hr.appendChild(el('th', i > 1 ? 'num' : '', h)); });
+      th.appendChild(hr); tb.appendChild(th);
+      var body = el('tbody'), rowsCsv = [['order', 'file', 'from', 'to', 'orders']];
+      done.forEach(function (d, i) {
+        var tr = el('tr');
+        tr.appendChild(el('td', null, String(i + 1))); tr.appendChild(el('td', null, d.name));
+        tr.appendChild(el('td', 'num', d.res.orders ? String(d.res.first) : '-')); tr.appendChild(el('td', 'num', d.res.orders ? String(d.res.last) : '-')); tr.appendChild(el('td', 'num', String(d.res.orders)));
+        body.appendChild(tr); rowsCsv.push([i + 1, d.name, d.res.orders ? d.res.first : '', d.res.orders ? d.res.last : '', d.res.orders]);
+      });
+      tb.appendChild(body); tw.appendChild(tb); sc.appendChild(tw);
+      var acts = el('div', 'actions'); acts.style.marginTop = '12px';
+      var st2 = el('p', 'saved'); st2.setAttribute('role', 'status');
+      var bc = el('button', '', 'Download summary (CSV)');
+      bc.addEventListener('click', function () { save('numbering_summary.csv', new Blob([rowsCsv.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n')], { type: 'text/csv' })).then(function (m) { st2.textContent = 'numbering_summary.csv: ' + m; }); });
+      acts.appendChild(bc);
+      if (done.length > 1) {
+        var ba = el('button', 'primary', 'Download all numbered PDFs');
+        ba.addEventListener('click', async function () { ba.disabled = true; for (var i = 0; i < done.length; i++) { st2.textContent = 'Saving ' + (i + 1) + ' of ' + done.length + '...'; await save(done[i].out, new Blob([done[i].res.outBytes], { type: 'application/pdf' })); } st2.textContent = 'Saved ' + done.length + ' files'; ba.disabled = false; });
+        acts.insertBefore(ba, bc);
+      }
+      sc.appendChild(acts); sc.appendChild(st2);
+      sc.appendChild(el('p', 'note', 'The next file or batch should start at ' + next + '. This browser will suggest it next time.'));
+      out.insertBefore(sc, out.firstChild);
+      var used = done.filter(function (d) { return d.res.orders; });
+      if (used.length) { writeLast({ last: next - 1, when: new Date().toLocaleString() }); showLast(); check(); }
     }
     running = false; $('run').disabled = !files.length;
   });
