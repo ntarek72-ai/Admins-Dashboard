@@ -756,7 +756,11 @@ function wrongApproval(invText, apprText) {
 const colOfX = (x, cols) => { for (let i = 0; i < cols.length - 1; i++) if (x >= cols[i] - 1 && x < cols[i + 1]) return i; return -1; };
 const ensureInv = font => { if (!font.inv) { font.inv = new Map(); if (font.uni) for (const [c, u] of font.uni) if (!font.inv.has(u)) font.inv.set(u, c); } };
 const runWidth = (font, run) => { if (font && font.type0) { ensureInv(font); return glyphWidth(font, run.text, run.size); } return run.text.length * run.size * 0.5; };
-const wordTokens = t => t.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+const unitFix = t => t.toLowerCase().replace(/[\u00b5\u03bc]g?/g, 'mcg');          // 50µ / 50µg = 50mcg
+const wordTokens = t => unitFix(t).split(/[^a-z0-9]+/).filter(Boolean);
+const pairsOf = ts => ts.concat(ts.slice(1).map((t, i) => ts[i] + t));
+// the strengths written in the invoice name (50mcg, 20mg, 100) must really be in the approval line
+const strengthOK = (tk, rowTokens) => { const set = pairsOf(rowTokens); return tk.filter(t => /\d/.test(t)).every(t => /^\d+$/.test(t) ? set.some(r => r === t || (r.startsWith(t) && !/^\d/.test(r.slice(t.length)))) : set.includes(t)); };
 const hasWord = (ts, key) => ts.some(t => t === key || (t.length >= 5 && key.length >= 5 && (t.startsWith(key) || key.startsWith(t))));
 const HEADS = ['Qty', 'ICD', 'Name', 'Unit', 'Dis.', 'Cop.', 'Net', 'Status'];
 
@@ -829,14 +833,19 @@ function deriveRow(an, row, qty, total, disc, qtyAll) {
 function splitAcross(an, row, hits, aRowsOf) {
   const qc = row.runs.find(r => colOfX(r.x, an.first.COLS) === 4);
   const qAll = qc ? parseFloat(qc.text.replace(/,/g, '')) : NaN;
-  if (!(qAll > 0)) return { error: 'quantity on the receipt could not be read' };
   const tk = wordTokens(row.name), parts = []; let strong = true;
-  for (const k of hits) {
-    const rws = aRowsOf(k), m = rowsFor(tk, rws);
-    if (m.length !== 1) return { error: `found in ${hits.length} approvals and the quantity could not be separated` };
-    parts.push({ k, qty: rws[m[0]].qty });
-    if (!(rws[m[0]].tokens.length && hasWord(rws[m[0]].tokens, tk[0]) && (tk.length < 2 || hasWord(rws[m[0]].tokens, tk[1])))) strong = false;
+  let cand = hits.map(k => { const rws = aRowsOf(k), m = rowsFor(tk, rws), st = m.filter(i => strengthOK(tk, rws[i].tokens)); return { k, rws, m, st }; });
+  cand = cand.filter(c => !(c.rws.length && !c.m.length));                          // this approval has no line like the item
+  const strict = cand.filter(c => c.st.length);
+  if (strict.length) cand = strict.map(c => ({ ...c, m: c.st }));                    // lines with another strength are not the same item
+  if (cand.length === 1 && hits.length > 1) return { single: cand[0].k };
+  for (const c of cand) {
+    if (c.m.length !== 1) return { error: `found in ${hits.length} approvals and the quantity could not be separated` };
+    const r = c.rws[c.m[0]];
+    parts.push({ k: c.k, qty: r.qty });
+    if (!(r.tokens.length && hasWord(r.tokens, tk[0]) && (tk.length < 2 || hasWord(r.tokens, tk[1])))) strong = false;
   }
+  if (!(qAll > 0)) return { error: 'quantity on the receipt could not be read' };
   const sum = parts.reduce((p, x) => p + x.qty, 0);
   if (Math.abs(sum - qAll) > 1e-9) return { error: `found in ${hits.length} approvals but the quantities (${parts.map(p => p.qty).join(' + ')} = ${sum}) do not match the receipt quantity (${qAll})`, kind: 'qty', strong };
   let tl = 0, dl = 0;
@@ -959,7 +968,7 @@ async function processPdf(fileBytes, opts) {
       const nItems = receipts.map(rc => (grabNum(rc.text, /Approved Items\s*:\s*(\d+)/) ?? grabNum(rc.text, /No\. Of Items\s*:\s*(\d+)/)));
       if (receipts.length === 1 && nItems[0] !== null && nItems[0] / 1e6 === an.rows.length) trivial = true;   // one approval, same number of items: nothing to do
       if (!trivial) {
-        const tokens = t => t.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+        const tokens = wordTokens;
         const withPairs = ts => ts.concat(ts.slice(1).map((t, i) => ts[i] + t));       // "20 mg" is also read as "20mg"
         const itemTokens = receipts.map((r, k) => {
           if (/Deleted|Rejected|Replaced|Cancel/i.test(r.text) && aAll(k).length) return withPairs([].concat(...aRowsOf(k).map(x => x.tokens)));   // lines marked deleted/rejected/replaced do not count
@@ -990,9 +999,10 @@ async function processPdf(fileBytes, opts) {
           if (hits.length > 1) sp = splitAcross(an, row, hits, aRowsOf);
           else if (hits.length === 1 && receipts.length > 1) {
             const oth = itemTokens.map((_, k) => k).filter(k => k !== hits[0] && tk.length && has(itemTokens[k], tk[0]));
-            if (oth.length) { const t = splitAcross(an, row, [hits[0]].concat(oth).sort((a, b) => a - b), aRowsOf); if (!t.error) sp = t; else if (t.kind === 'qty' && t.strong) sp = t; }
+            if (oth.length) { const t = splitAcross(an, row, [hits[0]].concat(oth).sort((a, b) => a - b), aRowsOf); if (!t.error && t.single === undefined) sp = t; else if (t.kind === 'qty' && t.strong) sp = t; }
           }
-          if (sp && !sp.error) sp.parts.forEach(p => { derived.push(deriveRow(an, row, p.qty, p.total, p.disc, sp.qAll)); groups[p.k].push(an.rows.length + derived.length - 1); });
+          if (sp && sp.single !== undefined) groups[sp.single].push(ri);
+          else if (sp && !sp.error) sp.parts.forEach(p => { derived.push(deriveRow(an, row, p.qty, p.total, p.disc, sp.qAll)); groups[p.k].push(an.rows.length + derived.length - 1); });
           else if (sp && sp.error && (hits.length > 1 || sp.kind === 'qty')) problems.push(`${row.name}: ${sp.error}`);
           else if (hits.length === 1) groups[hits[0]].push(ri);
           else if (!hits.length) left.push(ri);
@@ -1126,7 +1136,7 @@ async function numberPdf(fileBytes, opts) {
   return { outBytes, orders, first, last: cur, stamped, next: cur === null ? start : cur + 1 };
 }
 
-root.SplitCore = { processPdf, numberPdf, _t: { wrongApproval, approvalRows, rowsFor, analyzeInvoice, buildInvoice, tokenize, parseToUnicode, toMicro, fmtMicro, scan: scanPage, pageText } };
+root.SplitCore = { processPdf, numberPdf, _t: { wordTokens, strengthOK, pairsOf, hasWord, wrongApproval, approvalRows, rowsFor, analyzeInvoice, buildInvoice, tokenize, parseToUnicode, toMicro, fmtMicro, scan: scanPage, pageText } };
 if (typeof module !== 'undefined') module.exports = root.SplitCore;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
