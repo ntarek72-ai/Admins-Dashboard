@@ -694,6 +694,58 @@ function buildInvoice(an, sel) {
   return { pages: outPages.map(o => ({ tpl: o.tpl, bytes: concatBytes(o.chunks) })), tot, dis, net };
 }
 
+// ------------------------------------------------------------------ patient vs approval (wrong approval attached)
+const normName = str => String(str || '').normalize('NFKC').replace(/[ً-ٰٟـ]/g, '')
+  .replace(/[آأإ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي')
+  .toLowerCase();
+const nameTokens = str => normName(str).split(/[^a-zء-ي]+/).filter(t => t.length > 1);
+const isArabic = str => /[ء-ي]/.test(normName(str));
+const isLatin = str => /[a-z]/.test(normName(str));
+const rev = t => t.split('').reverse().join('');
+function editLE1(a, b) {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  if (a.length === b.length) return a.slice(i + 1) === b.slice(i + 1);
+  return a.length > b.length ? a.slice(i + 1) === b.slice(i) : b.slice(i + 1) === a.slice(i);
+}
+function sameWord(a, b) {
+  if (a === b) return true;
+  if (a.length >= 3 && b.length >= 3 && (a.startsWith(b) || b.startsWith(a))) return true;
+  return a.length >= 4 && b.length >= 4 && editLE1(a, b);
+}
+// the names of one person can be written in different orders/spellings; only a clear mismatch counts
+function sameWords(nameA, nameB) {
+  const A = nameTokens(nameA), B = nameTokens(nameB);
+  if (!A.length || !B.length) return true;
+  const ja = A.join(''), jb = B.join('');
+  if (ja.length >= 5 && jb.length >= 5 && (ja.includes(jb) || jb.includes(ja) || ja.includes(rev(jb)) || jb.includes(rev(ja)))) return true;
+  let hits = 0;
+  A.forEach(t => { if (B.some(u => sameWord(t, u) || sameWord(t, rev(u)))) hits++; });
+  return hits >= Math.min(2, A.length, B.length);
+}
+function patientInfo(text) {
+  const card = (/Card Number:?\s*(\d+)/.exec(text) || [])[1] || null;
+  let name = null;
+  const line = text.split('\n').find(l => /Patient Name:?/.test(l));
+  if (line) name = line.replace(/^.*?Patient Name:?\s*/, '').replace(/\s*Card Number.*$/, '').trim() || null;
+  return { card, name };
+}
+function beneficiaryInfo(text) {
+  const line = text.split('\n').find(l => /Beneficiary Name\s*:/.test(l));
+  if (!line) return { card: null, name: null };
+  const rest = line.replace(/^.*?Beneficiary Name\s*:\s*/, '').trim();
+  const m = /^(\d+)\s*\/\s*(.*)$/.exec(rest);
+  return m ? { card: m[1], name: m[2].trim() || null } : { card: null, name: rest || null };
+}
+// true when this approval clearly belongs to another patient
+function wrongApproval(invText, apprText) {
+  const p = patientInfo(invText), b = beneficiaryInfo(apprText);
+  if (p.card && b.card && p.card !== b.card) return true;
+  if (p.name && b.name && ((isArabic(p.name) && isArabic(b.name)) || (isLatin(p.name) && isLatin(b.name) && !isArabic(p.name) && !isArabic(b.name)))) return !sameWords(p.name, b.name);
+  return false;
+}
+
 // ------------------------------------------------------------------ main
 const tick = () => new Promise(r => setTimeout(r, 0));
 
@@ -779,6 +831,15 @@ async function processPdf(fileBytes, opts) {
       continue;
     }
 
+    {
+      const bad = receipts.filter(rc => wrongApproval(info[s].text, rc.text));
+      if (bad.length) {
+        keepRaw();
+        report.push({ order: label, status: 'UNCHANGED - needs review', problems: ['Wrong approval attached: ' + bad.map(r => '#' + r.id).join(', ') + ' (the patient on the approval is not the patient on the receipt)'], approvals: all.length });
+        continue;
+      }
+    }
+
     const problems = [], warnings = [];
     let an = null, groups = null, left = [], quiet = null, trivial = false;
     try {
@@ -824,7 +885,7 @@ async function processPdf(fileBytes, opts) {
             const t_ = sel.reduce((p, r) => p + r.total, 0), d_ = sel.reduce((p, r) => p + r.disc, 0);
           });
         }
-        if (!problems.length && left.length) warnings.push(`receipt without approval: these items are not in any approval - ${left.map(i => an.rows[i].name).join('; ')}`);
+        if (!problems.length && left.length) warnings.push(`items not found in any approval: ${left.map(i => an.rows[i].name).join('; ')}`);
         if (!problems.length) {
           const t_ = an.rows.reduce((p, r) => p + r.total, 0), d_ = an.rows.reduce((p, r) => p + r.disc, 0);
           if (Math.abs(cents(t_) - cents(an.total)) > 200) problems.push(`total: items add up to ${fmtMicro(t_)} but invoice says ${fmtMicro(an.total)}`);
@@ -941,7 +1002,7 @@ async function numberPdf(fileBytes, opts) {
   return { outBytes, orders, first, last: cur, stamped, next: cur === null ? start : cur + 1 };
 }
 
-root.SplitCore = { processPdf, numberPdf, _t: { analyzeInvoice, buildInvoice, tokenize, parseToUnicode, toMicro, fmtMicro, scan: scanPage, pageText } };
+root.SplitCore = { processPdf, numberPdf, _t: { wrongApproval, analyzeInvoice, buildInvoice, tokenize, parseToUnicode, toMicro, fmtMicro, scan: scanPage, pageText } };
 if (typeof module !== 'undefined') module.exports = root.SplitCore;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
@@ -1063,7 +1124,7 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
       wb.appendChild(wl); card.appendChild(wb);
     }
     var noApp = rep.filter(function (r) { return r.noApprovalItems; });
-    if (noApp.length) card.appendChild(el('p', 'note', noApp.length + (noApp.length === 1 ? ' order has' : ' orders have') + ' a receipt without approval: its items are not in any approval, so they got their own invoice at the end of the order, with no approval page.'));
+    if (noApp.length) card.appendChild(el('p', 'note', noApp.length + (noApp.length === 1 ? ' order has' : ' orders have') + ' items not found in any approval: they got their own invoice at the end of the order, with no approval page.'));
     var single = rep.filter(function (r) { return r.status === 'unchanged'; }).length;
     if (single) card.appendChild(el('p', 'note', single + (single === 1 ? ' order has' : ' orders have') + ' a single approval and stayed as it is.'));
 
