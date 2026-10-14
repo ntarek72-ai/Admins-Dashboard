@@ -1067,8 +1067,25 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
       bc.addEventListener('click', function () { save('numbering_summary.csv', new Blob([rowsCsv.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n')], { type: 'text/csv' })).then(function (m) { st2.textContent = 'numbering_summary.csv: ' + m; }); });
       acts.appendChild(bc);
       if (done.length > 1) {
-        var ba = el('button', 'primary', 'Download all numbered PDFs');
-        ba.addEventListener('click', async function () { ba.disabled = true; for (var i = 0; i < done.length; i++) { st2.textContent = 'Saving ' + (i + 1) + ' of ' + done.length + '...'; await save(done[i].out, new Blob([done[i].res.outBytes], { type: 'application/pdf' })); } st2.textContent = 'Saved ' + done.length + ' files'; ba.disabled = false; });
+        var ba = el('button', 'primary', 'Download all as one PDF');
+        ba.addEventListener('click', async function () {
+          ba.disabled = true;
+          try {
+            var PL = window.PDFLib, merged = await PL.PDFDocument.create();
+            for (var i = 0; i < done.length; i++) {
+              st2.textContent = 'Merging ' + (i + 1) + ' of ' + done.length + '...';
+              var src = await PL.PDFDocument.load(done[i].res.outBytes, { updateMetadata: false });
+              var pgs = await merged.copyPages(src, src.getPageIndices());
+              pgs.forEach(function (p) { merged.addPage(p); });
+              src = null; pgs = null;
+            }
+            st2.textContent = 'Saving...';
+            var mb = await merged.save();
+            var m = await save('numbered_all.pdf', new Blob([mb], { type: 'application/pdf' }));
+            st2.textContent = 'numbered_all.pdf (' + done.length + ' files in one): ' + m;
+          } catch (e) { st2.textContent = 'Could not merge: ' + ((e && e.message) || e); }
+          ba.disabled = false;
+        });
         acts.insertBefore(ba, bc);
       }
       sc.appendChild(acts); sc.appendChild(st2);
