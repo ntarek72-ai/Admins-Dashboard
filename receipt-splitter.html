@@ -746,6 +746,91 @@ function wrongApproval(invText, apprText) {
   return false;
 }
 
+// ------------------------------------------------------------------ one item in several approvals: split its quantity
+const colOfX = (x, cols) => { for (let i = 0; i < cols.length - 1; i++) if (x >= cols[i] - 1 && x < cols[i + 1]) return i; return -1; };
+const ensureInv = font => { if (!font.inv) { font.inv = new Map(); if (font.uni) for (const [c, u] of font.uni) if (!font.inv.has(u)) font.inv.set(u, c); } };
+const runWidth = (font, run) => { if (font && font.type0) { ensureInv(font); return glyphWidth(font, run.text, run.size); } return run.text.length * run.size * 0.5; };
+const wordTokens = t => t.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+const hasWord = (ts, key) => ts.some(t => t === key || (t.length >= 5 && key.length >= 5 && (t.startsWith(key) || key.startsWith(t))));
+const HEADS = ['Qty', 'ICD', 'Name', 'Unit', 'Dis.', 'Cop.', 'Net', 'Status'];
+
+// the item lines of an approval (quantity and name of every line)
+function approvalRows(L, ctx, pages, idxs) {
+  const rows = []; let centers = null;
+  for (const pi of idxs) {
+    const scan = scanPage(L, ctx, pages[pi]);
+    const runs = scan.runs.filter(r => r.text.trim() !== '');
+    const cen = r => r.x + runWidth(scan.fonts[r.font], r) / 2;
+    const q = runs.find(r => r.text.trim() === 'Qty');
+    let headTop = -1;
+    if (q) {
+      const hs = runs.filter(r => Math.abs(r.top - q.top) < 3 && HEADS.includes(r.text.trim()));
+      if (hs.length >= 6) { centers = hs.map(r => ({ name: r.text.trim(), c: cen(r) })); headTop = q.top; }
+    }
+    if (!centers) continue;
+    const colOfRun = r => { const c = cen(r); let best = null; centers.forEach(h => { if (!best || Math.abs(h.c - c) < Math.abs(best.c - c)) best = h; }); return best.name; };
+    const body = runs.filter(r => r.top > headTop + 2);
+    const qtys = body.filter(r => colOfRun(r) === 'Qty' && /^\d+(?:\.\d+)?\s*\/\s*\S/.test(r.text.trim())).sort((a, b) => a.top - b.top);
+    const mine = qtys.map(r => ({ qty: parseFloat(r.text), name: [], dis: null, top: r.top }));
+    const nearest = r => { let b = null; mine.forEach(m => { if (!b || Math.abs(m.top - r.top) < Math.abs(b.top - r.top)) b = m; }); return b && Math.abs(b.top - r.top) <= 14 ? b : null; };
+    body.forEach(r => { const c = colOfRun(r); if (c === 'Name') { const m = nearest(r); if (m) m.name.push(r); } });
+    mine.forEach(m => { m.nameText = m.name.sort((a, b) => a.top - b.top || a.x - b.x).map(r => r.text.trim()).join(' '); m.tokens = wordTokens(m.nameText); rows.push(m); });
+  }
+  return rows;
+}
+// which lines of an approval belong to an invoice item (same word-by-word narrowing as for the approvals)
+function rowsFor(tk, rows) {
+  let hits = rows.map((_, i) => i);
+  for (let n = 1; n <= tk.length; n++) {
+    const h = hits.filter(i => tk.slice(0, n).every(w => hasWord(rows[i].tokens, w)));
+    if (n === 1 && !h.length) {
+      const keys = [tk[0], tk[0] + (tk[1] || '')].filter(x => x && x.length >= 4);
+      hits = hits.filter(i => { const j = rows[i].tokens.join(''); return keys.some(x => j.includes(x)); });
+      break;
+    }
+    if (!h.length) break;
+    hits = h;
+    if (hits.length === 1) break;
+  }
+  return hits;
+}
+const fmt3 = micro => { const m = Math.round(micro / 1000), ip = Math.floor(m / 1000), fr = String(m % 1000).padStart(3, '0'); return String(ip).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + fr; };
+// a copy of an invoice row that shows only `qty` of the item (quantity, total and discount rewritten in place)
+function deriveRow(an, row, qty, total, disc, qtyAll) {
+  const fonts = an.pages[row.page].scan.fonts, C = an.first.COLS;
+  const runs = row.runs.map(r => {
+    const c = colOfX(r.x, C); let txt = null;
+    if (c === 4) txt = /\./.test(r.text) ? qty.toFixed((r.text.split('.')[1] || '').trim().length) : String(qty);
+    else if (c === 5) txt = fmt3(total); else if (c === 6) txt = fmt3(disc);
+    if (txt === null) return r;
+    const f = fonts[r.font]; ensureInv(f);
+    const oldW = glyphWidth(f, r.text, r.size), newW = glyphWidth(f, txt, r.size);
+    return { ...r, text: txt, x: r.x + oldW / 2 - newW / 2, operand: encodeFor(f, txt), showOp: 'Tj' };
+  });
+  return { ...row, runs, total, disc, qtyNote: qty, qtyAll };
+}
+// split the item's quantity between the approvals that contain it; the parts must add up to the invoice quantity
+function splitAcross(an, row, hits, aRowsOf) {
+  const qc = row.runs.find(r => colOfX(r.x, an.first.COLS) === 4);
+  const qAll = qc ? parseFloat(qc.text.replace(/,/g, '')) : NaN;
+  if (!(qAll > 0)) return { error: 'quantity on the receipt could not be read' };
+  const tk = wordTokens(row.name), parts = []; let strong = true;
+  for (const k of hits) {
+    const rws = aRowsOf(k), m = rowsFor(tk, rws);
+    if (m.length !== 1) return { error: `found in ${hits.length} approvals and the quantity could not be separated` };
+    parts.push({ k, qty: rws[m[0]].qty });
+    if (!(rws[m[0]].tokens.length && hasWord(rws[m[0]].tokens, tk[0]) && (tk.length < 2 || hasWord(rws[m[0]].tokens, tk[1])))) strong = false;
+  }
+  const sum = parts.reduce((p, x) => p + x.qty, 0);
+  if (Math.abs(sum - qAll) > 1e-9) return { error: `found in ${hits.length} approvals but the quantities (${parts.map(p => p.qty).join(' + ')} = ${sum}) do not match the receipt quantity (${qAll})`, kind: 'qty', strong };
+  let tl = 0, dl = 0;
+  parts.forEach((p, i) => {
+    if (i === parts.length - 1) { p.total = row.total - tl; p.disc = row.disc - dl; }
+    else { p.total = Math.round(row.total * p.qty / qAll); p.disc = Math.round(row.disc * p.qty / qAll); tl += p.total; dl += p.disc; }
+  });
+  return { parts, qAll };
+}
+
 // ------------------------------------------------------------------ main
 const tick = () => new Promise(r => setTimeout(r, 0));
 
@@ -842,6 +927,9 @@ async function processPdf(fileBytes, opts) {
 
     const problems = [], warnings = [];
     let an = null, groups = null, left = [], quiet = null, trivial = false;
+    const derived = [], aRowsCache = {};
+    const rowAt = i => i < an.rows.length ? an.rows[i] : derived[i - an.rows.length];
+    const aRowsOf = k => aRowsCache[k] || (aRowsCache[k] = approvalRows(L, ctx, pages, receipts[k].pages));
     try {
       const scans = []; for (let i = s; i < invEnd; i++) { if (!info[i].inv) throw new Error('could not read an invoice page'); scans.push(scanPage(L, ctx, pages[i])); }
       an = analyzeInvoice(scans, info[s].text);
@@ -872,15 +960,24 @@ async function processPdf(fileBytes, opts) {
             hits = h;
             if (hits.length === 1) break;
           }
-          if (hits.length === 1) groups[hits[0]].push(ri);
+          // the same item may sit in several approvals (each with part of the quantity)
+          let sp = null;
+          if (hits.length > 1) sp = splitAcross(an, row, hits, aRowsOf);
+          else if (hits.length === 1 && receipts.length > 1) {
+            const oth = itemTokens.map((_, k) => k).filter(k => k !== hits[0] && tk.length && has(itemTokens[k], tk[0]));
+            if (oth.length) { const t = splitAcross(an, row, [hits[0]].concat(oth).sort((a, b) => a - b), aRowsOf); if (!t.error) sp = t; else if (t.kind === 'qty' && t.strong) sp = t; }
+          }
+          if (sp && !sp.error) sp.parts.forEach(p => { derived.push(deriveRow(an, row, p.qty, p.total, p.disc, sp.qAll)); groups[p.k].push(an.rows.length + derived.length - 1); });
+          else if (sp && sp.error && (hits.length > 1 || sp.kind === 'qty')) problems.push(`${row.name}: ${sp.error}`);
+          else if (hits.length === 1) groups[hits[0]].push(ri);
           else if (!hits.length) left.push(ri);
-          else problems.push(`${row.name}: found in ${hits.length} approvals`);
+          else problems.push(`${row.name}: ${sp.error}`);
         });
         if (!problems.length) {
           receipts.forEach((rc, k) => {
             const g = groups[k];
             if (!g.length) { problems.push(`approval #${rc.id} has no matching invoice items`); return; }
-            const sel = g.map(i => an.rows[i]);
+            const sel = g.map(rowAt);
             const gross = grabNum(rc.text, /Gross Amount\s*:\s*([\d,.]+)/), disc = grabNum(rc.text, /Discount Amount\s*:\s*([\d,.]+)/), netv = grabNum(rc.text, /Net Amount\s*:\s*([\d,.]+)/);
             const t_ = sel.reduce((p, r) => p + r.total, 0), d_ = sel.reduce((p, r) => p + r.disc, 0);
           });
@@ -892,7 +989,7 @@ async function processPdf(fileBytes, opts) {
           if (Math.abs(cents(d_) - cents(an.disc)) > 200) problems.push(`discount: items add up to ${fmtMicro(d_)} but invoice says ${fmtMicro(an.disc)}`);
         }
         // dry-run the rebuild so that any font/glyph/space problem is caught before anything is written
-        if (!problems.length) { groups.forEach(g => buildInvoice(an, g.map(i => an.rows[i]))); if (left.length) buildInvoice(an, left.map(i => an.rows[i])); }
+        if (!problems.length) { groups.forEach(g => buildInvoice(an, g.map(rowAt))); if (left.length) buildInvoice(an, left.map(i => an.rows[i])); }
       }
     } catch (ex) {
       if (receipts.length === 1) quiet = ex.message || String(ex); else problems.push(ex.message || String(ex));
@@ -918,9 +1015,9 @@ async function processPdf(fileBytes, opts) {
       });
       if (rc) rc.pages.forEach(pi => { const it = mk(pi, false); plan.push(it); splitPlan.push({ ...it }); });
       sc += cents(b.tot); sd += cents(b.dis); sn += cents(b.net);
-      detail.push({ receipt: rc ? rc.id : null, noApproval: !rc, items: sel.map(r => r.name), total: fmtMicro(b.tot), discount: fmtMicro(b.dis), net: fmtMicro(b.net) });
+      detail.push({ receipt: rc ? rc.id : null, noApproval: !rc, items: sel.map(r => r.qtyNote !== undefined ? `${r.name} (qty ${r.qtyNote} of ${r.qtyAll})` : r.name), total: fmtMicro(b.tot), discount: fmtMicro(b.dis), net: fmtMicro(b.net) });
     };
-    groups.forEach((g, k) => emit(g.map(i => an.rows[i]), receipts[k]));
+    groups.forEach((g, k) => emit(g.map(rowAt), receipts[k]));
     if (left.length) emit(left.map(i => an.rows[i]), null);        // items with no approval: their own invoice at the end
     nSplit++;
     report.push({ order: label, status: 'split', approvals: receipts.length, noApprovalItems: left.length, receipts: detail, warnings, serial: stamp, ...dupNote,
@@ -1002,7 +1099,7 @@ async function numberPdf(fileBytes, opts) {
   return { outBytes, orders, first, last: cur, stamped, next: cur === null ? start : cur + 1 };
 }
 
-root.SplitCore = { processPdf, numberPdf, _t: { wrongApproval, analyzeInvoice, buildInvoice, tokenize, parseToUnicode, toMicro, fmtMicro, scan: scanPage, pageText } };
+root.SplitCore = { processPdf, numberPdf, _t: { wrongApproval, approvalRows, rowsFor, analyzeInvoice, buildInvoice, tokenize, parseToUnicode, toMicro, fmtMicro, scan: scanPage, pageText } };
 if (typeof module !== 'undefined') module.exports = root.SplitCore;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
