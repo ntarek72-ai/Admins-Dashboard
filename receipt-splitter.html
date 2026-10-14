@@ -818,7 +818,7 @@ function priceMismatches(an, rows) {
 const lev = (a, b) => { const d = []; for (let i = 0; i <= a.length; i++) { d[i] = [i]; } for (let j = 1; j <= b.length; j++) d[0][j] = j;
   for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); return d[a.length][b.length]; };
 // the first word of the invoice name is written slightly differently in the approval (Ginkgo / Ginko)
-const similarName = (tk, rowTokens) => !!tk.length && tk[0].length >= 4 && rowTokens.some(t => t.length >= 4 && (lev(tk[0], t) <= (tk[0].length >= 7 ? 2 : 1) || (Math.min(t.length, tk[0].length) >= 5 && (t.startsWith(tk[0].slice(0, 5)) || tk[0].startsWith(t.slice(0, 5))))));
+const similarName = (tk, rowTokens) => !!tk.length && tk[0].length >= 4 && rowTokens.some(t => t.length >= 4 && (lev(tk[0], t) <= (tk[0].length >= 9 ? 2 : 1) || (Math.min(t.length, tk[0].length) >= 5 && (t.startsWith(tk[0].slice(0, 5)) || tk[0].startsWith(t.slice(0, 5))))));
 const invQty = (an, row) => { const qc = row.runs.find(r => colOfX(r.x, an.first.COLS) === 4); return qc ? parseFloat(qc.text.replace(/,/g, '')) : NaN; };
 const fmt3 = micro => { const m = Math.round(micro / 1000), ip = Math.floor(m / 1000), fr = String(m % 1000).padStart(3, '0'); return String(ip).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + fr; };
 // a copy of an invoice row that shows only `qty` of the item (quantity, total and discount rewritten in place)
@@ -1024,8 +1024,7 @@ async function processPdf(fileBytes, opts) {
           });
         }
         // an item nobody claimed: (1) the same item spelled a little differently in the approval (similar name, same price or quantity)
-        //                         (2) a probable substitute: the only approval line nobody claimed, with the same quantity
-        if (!problems.length && left.length) {
+                if (!problems.length && left.length) {
           const ord = i => { const r = rowAt(i); return r.page * 1e5 + r.t; };
           const still = [];
           left.forEach(ri => {
@@ -1037,20 +1036,6 @@ async function processPdf(fileBytes, opts) {
             if (cands.length === 1) groups[cands[0].k].push(ri); else still.push(ri);
           });
           left = still;
-          if (left.length) {
-            const claimed = receipts.map(() => new Set());
-            groups.forEach((g, k) => g.forEach(i => { const rws = aRowsOf(k); rowsFor(wordTokens(rowAt(i).name), rws).forEach(j => claimed[k].add(j)); }));
-            const free = []; receipts.forEach((rc, k) => aRowsOf(k).forEach((r, j) => { if (!claimed[k].has(j)) free.push({ k, j, r }); }));
-            const opts = left.map(ri => { const row = an.rows[ri], q = invQty(an, row); return free.filter(f => f.r.qty === q && (f.r.gross === null || (f.r.gross >= row.total * 0.4 && f.r.gross <= row.total * 2.5))); });
-            const still2 = [];
-            left.forEach((ri, n) => {
-              const f = opts[n].length === 1 ? opts[n][0] : null;
-              const rivals = f ? opts.filter(o => o.includes(f)).length : 0;
-              if (f && rivals === 1) { groups[f.k].push(ri); warnings.push(`possible substitute: ${an.rows[ri].name} (receipt) instead of "${f.r.nameText}" (approval #${receipts[f.k].id})`); }
-              else still2.push(ri);
-            });
-            left = still2;
-          }
           groups.forEach(g => g.sort((a, b) => ord(a) - ord(b)));
         }
         if (!problems.length && left.length) warnings.push(`items not found in any approval: ${left.map(i => an.rows[i].name).join('; ')}`);
@@ -1172,7 +1157,7 @@ async function numberPdf(fileBytes, opts) {
   return { outBytes, orders, first, last: cur, stamped, next: cur === null ? start : cur + 1 };
 }
 
-root.SplitCore = { processPdf, numberPdf, _t: { wordTokens, strengthOK, pairsOf, hasWord, wrongApproval, approvalRows, rowsFor, analyzeInvoice, buildInvoice, tokenize, parseToUnicode, toMicro, fmtMicro, scan: scanPage, pageText } };
+root.SplitCore = { processPdf, numberPdf, _t: { similarName, wordTokens, strengthOK, pairsOf, hasWord, wrongApproval, approvalRows, rowsFor, analyzeInvoice, buildInvoice, tokenize, parseToUnicode, toMicro, fmtMicro, scan: scanPage, pageText } };
 if (typeof module !== 'undefined') module.exports = root.SplitCore;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
