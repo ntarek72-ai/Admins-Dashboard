@@ -823,9 +823,6 @@ async function processPdf(fileBytes, opts) {
             const gross = grabNum(rc.text, /Gross Amount\s*:\s*([\d,.]+)/), disc = grabNum(rc.text, /Discount Amount\s*:\s*([\d,.]+)/), netv = grabNum(rc.text, /Net Amount\s*:\s*([\d,.]+)/);
             const t_ = sel.reduce((p, r) => p + r.total, 0), d_ = sel.reduce((p, r) => p + r.disc, 0);
             if (nItems[k] !== null && nItems[k] / 1e6 !== sel.length) warnings.push(`approval #${rc.id} lists ${nItems[k] / 1e6} item${nItems[k] / 1e6 === 1 ? '' : 's'} but ${sel.length} invoice item${sel.length === 1 ? '' : 's'} matched it (check the quantities dispensed)`);
-            [['gross', t_, gross], ['discount', d_, disc], ['net', t_ - d_, netv]].forEach(([nm, mine, theirs]) => {
-              if (theirs !== null && Math.abs(cents(mine) - cents(theirs)) > 200) warnings.push(`approval #${rc.id}: ${nm} is ${fmtMicro(mine)} on the invoice but ${fmtMicro(theirs)} on the approval`);
-            });
           });
         }
         if (!problems.length && left.length) warnings.push(`items with no approval: ${left.map(i => an.rows[i].name).join('; ')} (put on a separate invoice at the end)`);
