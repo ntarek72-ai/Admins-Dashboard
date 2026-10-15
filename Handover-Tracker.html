@@ -709,6 +709,7 @@ function eventCore(e, a, b){
     case 'comment': return a + ' added a comment';
     case 'type':    return a + ' changed the order type';
     case 'edit':    return a + ' edited the ticket';
+    case 'edit_notice': return a + ' sent a reminder email about the update';
     case 'retail_link': return 'Linked to an issue in the Retail Issue Tracker';
     case 'retail_done': return 'Mohamed Sayed resolved it in the Retail Issue Tracker';
     case 'resolve': return a + ' submitted it as resolved';
@@ -1012,10 +1013,28 @@ function actionDialog(kind, id){
     ask({
       title:'Edit ' + t.orderNumber, intro:'Fix what is wrong. Who holds the ticket and its status do not change, and every change is written in the history.', confirm:'Save changes', fields:fields,
       savingLabel:'Saving…',
+      after:'<div class="field" style="border-top:1px solid var(--line);padding-top:14px;margin-top:4px">' +
+        '<label style="display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer">' +
+        '<input type="checkbox" id="notifyUpdateChk"> Send a reminder email about this update</label>' +
+        '<p style="margin:4px 0 0;color:var(--muted);font-size:13px">Goes to the person holding the ticket, the person who opened it, and the other admins.</p>' +
+        '<div id="notifyUpdateWrap" class="hidden" style="margin-top:10px">' +
+        '<label class="f">Comment shown in the email</label>' +
+        '<textarea class="in" id="notifyUpdateInput" dir="auto"></textarea></div></div>',
+      onOpen:function(){
+        const c = document.getElementById('notifyUpdateChk'), w = document.getElementById('notifyUpdateWrap');
+        c.addEventListener('change', function(){ w.classList.toggle('hidden', !c.checked); if(c.checked) document.getElementById('notifyUpdateInput').focus(); });
+      },
       run:async function(v){
         const retailComment = v.retailComment || '';
         delete v.retailComment;
-        let d = await api('editTicket', { id:id, fields:v });
+        const nChk = document.getElementById('notifyUpdateChk');
+        const payload = { id:id, fields:v };
+        if(nChk && nChk.checked){
+          payload.notifyUpdate = true;
+          payload.updateComment = document.getElementById('notifyUpdateInput').value.trim();
+          if(!payload.updateComment) throw new Error('Write the comment for the reminder email.');
+        }
+        let d = await api('editTicket', payload);
         const lastEv = (d.events || []).slice(-1)[0];
         toast(d.ticket && d.ticket.retailEditPending ? 'Ticket updated here. The Retail Tracker did not answer, so it will be updated there automatically in a few minutes.'
             : (lastEv && lastEv.kind === 'retail_edit' ? 'Ticket updated here and in the Retail Tracker' : 'Ticket updated'), 7000);
