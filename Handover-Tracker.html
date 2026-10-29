@@ -195,6 +195,7 @@
       <div class="who"><b id="meName"></b><br><span id="syncTxt">Loading…</span></div>
       <button class="btn quiet" id="refreshBtn" type="button">Refresh</button>
       <button class="btn" id="exportBtn" type="button">Export sheet</button>
+      <button class="btn" id="archiveBtn" type="button">Search archive</button>
       <button class="btn quiet hidden" id="pwAdminBtn" type="button">Passwords</button>
       <button class="btn quiet" id="chPwBtn" type="button">Change password</button>
       <button class="btn quiet" id="logoutBtn" type="button">Sign out</button>
@@ -1228,6 +1229,44 @@ $('#pwAdminBtn').onclick = passwordsDialog;
 $('#refreshBtn').onclick = function(){ loadAll(); };
 $('#newBtn').onclick = newTicketDialog;
 $('#exportBtn').onclick = exportCSV;
+/* Old resolved tickets are moved out of the live storage into one archive file; this finds them again. */
+function archiveResultHTML(r){
+  const t = r.ticket;
+  const log = r.events.slice().sort(function(a, b){ return a.at < b.at ? -1 : 1; }).map(function(e){
+    return '<li>' + eventText(e) + ' <span class="when">' + fmtWhen(e.at) + '</span>' + (e.note ? '<span class="note" dir="auto">' + esc(e.note) + '</span>' : '') + '</li>';
+  }).join('');
+  return '<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:10px">' +
+    '<div style="font-weight:700">' + esc(t.orderNumber) + ' <span style="font-weight:400;color:var(--muted)">' + esc(t.orderType || '') + '</span></div>' +
+    '<div style="font-size:13px;color:var(--muted)">' + esc(t.company || 'No company') + ' · ' + esc(t.pharmacy || 'No pharmacy') + (t.cycle ? ' · ' + esc(t.cycle) : '') + '</div>' +
+    '<div style="font-size:13px;margin-top:4px">Opened by ' + esc(nameOf(t.createdBy)) + ', ' + fmtWhen(t.createdAt) + (t.resolvedAt ? ' · Resolved ' + fmtWhen(t.resolvedAt) : '') + '</div>' +
+    (t.issue ? '<div dir="auto" style="margin-top:4px"><b>Issue:</b> ' + esc(t.issue) + '</div>' : '') +
+    (t.newOrderNumber ? '<div><b>New order:</b> ' + esc(t.newOrderNumber) + '</div>' : '') +
+    (t.resolutionNote ? '<div dir="auto"><b>Resolution:</b> ' + esc(t.resolutionNote) + '</div>' : '') +
+    (log ? '<details style="margin-top:6px"><summary style="cursor:pointer">History (' + r.events.length + ')</summary><ol class="log">' + log + '</ol></details>' : '') + '</div>';
+}
+$('#archiveBtn').onclick = function(){
+  ask({
+    title:'Search archive', intro:'Resolved tickets older than a month are moved to the archive. Search by order number, new order number, company, pharmacy or words from the issue.', confirm:'Close', fields:[],
+    before:'<div class="field"><label class="f">Search</label><div style="display:flex;gap:8px"><input class="in" id="arcQ" dir="auto" autocomplete="off" placeholder="At least 3 characters" style="flex:1">' +
+      '<button class="btn primary" type="button" id="arcGo">Search</button></div></div><div id="arcOut" style="max-height:55vh;overflow:auto"></div>',
+    onOpen:function(){
+      const q = document.getElementById('arcQ'), out = document.getElementById('arcOut');
+      const go = async function(){
+        const text = q.value.trim();
+        if(text.length < 3){ out.innerHTML = '<p style="color:var(--danger)">Type at least 3 characters.</p>'; return; }
+        out.innerHTML = '<p style="color:var(--muted)">Searching…</p>';
+        try{
+          const d = await api('searchArchive', { q:text });
+          out.innerHTML = d.results.length
+            ? '<p style="color:var(--muted);font-size:13px">' + (d.total > d.results.length ? 'Showing ' + d.results.length + ' of ' + d.total + ' matches. Type more to narrow it down.' : d.total + ' match' + (d.total === 1 ? '' : 'es')) + '</p>' + d.results.map(archiveResultHTML).join('')
+            : '<p>Nothing found in the archive.</p>';
+        }catch(e){ out.innerHTML = '<p style="color:var(--danger)">' + esc(e.message) + '</p>'; }
+      };
+      document.getElementById('arcGo').onclick = go;
+      q.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); go(); } });
+    }
+  });
+};
 $('#notifyToggle').addEventListener('change', async function(e){
   const want = e.target.checked; e.target.disabled = true;
   try{ await api('setNotifications', { enabled:want }); S.notify = want; toast(want ? 'Email notifications are on' : 'Email notifications are off'); }
