@@ -422,6 +422,7 @@ function ingest(d){
   S.users = d.users; S.tickets = d.tickets; S.events = d.events;
   S.notify = !!(d.settings && d.settings.notificationsEnabled);
   if(typeof d.usage === 'number') S.usage = d.usage;
+  if(typeof d.archived === 'number') S.archived = d.archived;
   updateNotifyBar();
   enrich(); fillFilters(); render();
   S.lastOk = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
@@ -576,13 +577,13 @@ function renderStats(){
     ['open', n(function(t){ return t.status !== 'Resolved'; }), 'Open'],
     ['sent', n(function(t){ return t.status === 'Sent'; }), 'Waiting to be confirmed'],
     ['recv', n(function(t){ return t.status === 'Received'; }), 'Being worked on'],
-    ['done', n(function(t){ return t.status === 'Resolved'; }), 'Resolved']
+    ['done', n(function(t){ return t.status === 'Resolved'; }) + (S.archived || 0), 'Resolved']
   ];
   // Each number is a button: it opens exactly the tickets it counts (the whole team's, whoever holds them).
   const isOn = function(k){ return (k === 'open' && S.tab === 'open' && !S.status) || (k === 'sent' && S.tab === 'open' && S.status === 'Sent') ||
                                    (k === 'recv' && S.tab === 'open' && S.status === 'Received') || (k === 'done' && S.tab === 'done'); };
   $('#stats').innerHTML = items.map(function(i){
-    return '<button type="button" class="stat ' + i[0] + (isOn(i[0]) ? ' on' : '') + '" data-stat="' + i[0] + '" title="Show these tickets"><b>' + i[1] + '</b><span>' + i[2] + '</span></button>';
+    return '<button type="button" class="stat ' + i[0] + (isOn(i[0]) ? ' on' : '') + '" data-stat="' + i[0] + '" title="' + (i[0] === 'done' && S.archived ? 'Includes ' + S.archived + ' in the archive (use Search archive to find them)' : 'Show these tickets') + '"><b>' + i[1] + '</b><span>' + i[2] + '</span></button>';
   }).join('');
 }
 
