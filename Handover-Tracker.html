@@ -1246,7 +1246,7 @@ function archiveResultHTML(r){
 }
 $('#archiveBtn').onclick = function(){
   ask({
-    title:'Search archive', intro:'Resolved tickets older than a month are moved to the archive. Search by order number, new order number, company, pharmacy or words from the issue.', confirm:'Close', fields:[],
+    title:'Search archive', intro:'Resolved tickets move to the archive the day after they are resolved. Search by order number, new order number, company, pharmacy or words from the issue.', confirm:'Close', fields:[],
     before:'<div class="field"><label class="f">Search</label><div style="display:flex;gap:8px"><input class="in" id="arcQ" dir="auto" autocomplete="off" placeholder="At least 3 characters" style="flex:1">' +
       '<button class="btn primary" type="button" id="arcGo">Search</button></div></div><div id="arcOut" style="max-height:55vh;overflow:auto"></div>',
     onOpen:function(){
