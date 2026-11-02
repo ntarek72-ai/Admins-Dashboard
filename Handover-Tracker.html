@@ -1138,6 +1138,27 @@ function exportCSV(){
   toast('Exported ' + rows.length + ' tickets');
 }
 
+function exportArchiveCSV(d){
+  const head = ['Ticket ID','Order number','Order type','Company','Pharmacy','Cycle','Issue','Status','Opened by','Opened at',
+                'New order number','Resolution note','Attachment','Retail Issue Tracker','Resolved by','Resolved at','Times handed over','Days to resolve','History'];
+  const byTicket = {};
+  d.events.forEach(function(e){ (byTicket[e.ticketId] = byTicket[e.ticketId] || []).push(e); });
+  const rows = d.tickets.slice().sort(function(a,b){ return a.createdAt < b.createdAt ? -1 : 1; }).map(function(t){
+    const ev = (byTicket[t.id] || []).sort(function(a,b){ return a.at < b.at ? -1 : 1; });
+    const hops = ev.filter(function(e){ return e.kind === 'create' || e.kind === 'resend' || e.kind === 'reopen'; }).length;
+    const days = t.resolvedAt ? Math.max(0, Math.floor((new Date(t.resolvedAt) - new Date(t.createdAt)) / 86400000)) : '';
+    return [t.id, t.orderNumber, t.orderType || '', t.company, t.pharmacy, t.cycle, t.issue, t.status, nameOf(t.createdBy), stamp(t.createdAt),
+            t.newOrderNumber, t.resolutionNote, attachmentsOf(t).map(function(a){ return a.url; }).join(' '),
+            t.retailIssueId ? (t.retailStatus === 'Resolved' ? 'Closed on both' : (t.retailStatus === 'Answered' ? 'Sayed resolved it' : 'Open there')) : '',
+            t.resolvedBy ? nameOf(t.resolvedBy) : '', stamp(t.resolvedAt), hops, days, ev.map(function(e){ return stamp(e.at) + ' ' + plainEvent(e); }).join(' | ')];
+  });
+  const csv = '\uFEFF' + [head].concat(rows).map(function(r){ return r.map(csvCell).join(','); }).join('\r\n');
+  const url = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' }));
+  const a = document.createElement('a'); a.href = url; a.download = 'archive-' + stamp(new Date().toISOString()).slice(0,10) + '.csv';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+  toast('Exported ' + rows.length + ' archived tickets');
+}
+
 /* ===================== EVENTS ===================== */
 $('#loginForm').addEventListener('submit', async function(ev){
   ev.preventDefault();
@@ -1249,7 +1270,8 @@ $('#archiveBtn').onclick = function(){
   ask({
     title:'Search archive', intro:'Resolved tickets move to the archive the day after they are resolved. Search by order number, new order number, company, pharmacy or words from the issue.', confirm:'Close', fields:[],
     before:'<div class="field"><label class="f">Search</label><div style="display:flex;gap:8px"><input class="in" id="arcQ" dir="auto" autocomplete="off" placeholder="At least 3 characters" style="flex:1">' +
-      '<button class="btn primary" type="button" id="arcGo">Search</button></div></div><div id="arcOut" style="max-height:55vh;overflow:auto"></div>',
+      '<button class="btn primary" type="button" id="arcGo">Search</button></div></div>' +
+      '<div style="margin-bottom:6px"><button class="btn" type="button" id="arcAll">Download the whole archive (CSV for Excel / Google Sheets)</button></div><div id="arcOut" style="max-height:55vh;overflow:auto"></div>',
     onOpen:function(){
       const q = document.getElementById('arcQ'), out = document.getElementById('arcOut');
       const go = async function(){
@@ -1264,6 +1286,13 @@ $('#archiveBtn').onclick = function(){
         }catch(e){ out.innerHTML = '<p style="color:var(--danger)">' + esc(e.message) + '</p>'; }
       };
       document.getElementById('arcGo').onclick = go;
+      const allBtn = document.getElementById('arcAll');
+      allBtn.onclick = async function(){
+        allBtn.disabled = true; const old = allBtn.textContent; allBtn.textContent = 'Preparing…';
+        try{ exportArchiveCSV(await api('archiveAll', {})); }
+        catch(e){ out.innerHTML = '<p style="color:var(--danger)">' + esc(e.message) + '</p>'; }
+        allBtn.disabled = false; allBtn.textContent = old;
+      };
       q.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); go(); } });
     }
   });
