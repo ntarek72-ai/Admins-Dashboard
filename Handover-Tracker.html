@@ -238,7 +238,7 @@ const CONFIG = {
   REMIND_HOURS: 4,        // Sent tickets older than this are highlighted
   REFRESH_MS: 60000,
   PHARMACIES: ["El Hadaba","Marwa","Moslmany","Mohamed Salam","Farghal","ENGY","Mo Wagih","Omranya"],
-  COMPANIES: ["Administrative control Authority (ACA)","Ahly Medical","Anabib El Petrol","AXA Services Egypt","Bupa","Cinema","Cinnabon","City Stars","EGAS","Egyptian Customs Authority","El Ganzory Hospital","El Mashreq","EMC","Estsharion","GASCO","GlobeMed","HyperOne","Limitless Care","Mednet","Medright","MedRight TPA","Medsure","MetLife","MISR HEALTH CARE","Napp","Next Care","Omega Care","Petrojet","Sainco","Seha One","Tawoon","Wadi El Neel","Other"]
+  COMPANIES: ["Administrative control Authority (ACA)","Ahly Medical","Anabib El Petrol","Apatch Petroleum","AXA Services Egypt","Bupa","Cinema","Cinnabon","City Stars","EGAS","Egyptian Customs Authority","El Ganzory Hospital","El Mashreq","EMC","Estsharion","GASCO","General Petroleum Company","GlobeMed","Health and Wealth","HyperOne","Limitless Care","Maadi Investment","Mednet","Medright","MedRight TPA","Medsure","MetLife","MISR HEALTH CARE","Napp","Next Care","Nile Petroleum","Omega Care","Oriental Weavers","Petrojet","Sainco","Seha One","Tawoon","Wadi El Neel","Other"]
 };
 const ORDER_TYPES = ['Chronic', 'VPN', 'Walk In'];
 // Same rule as the server: first letter of the order number, capital or small.
@@ -722,7 +722,9 @@ function eventCore(e, a, b){
 function actionsHTML(t){
   const core = actionsCore(t);
   const canType = !S.me.viewer && (t.holder === S.me.email || S.me.admin || t.createdBy === S.me.email);
-  const admin = S.me.admin ? '<button class="btn quiet" data-act="edit" data-id="' + esc(t.id) + '">Edit ticket</button><button class="btn quiet red" data-act="delete" data-id="' + esc(t.id) + '">Delete ticket</button>' : '';
+  const canEditOwn = !S.me.admin && !S.me.viewer && t.createdBy === S.me.email && t.status !== 'Resolved';     // you can fix a ticket YOU opened
+  const admin = S.me.admin ? '<button class="btn quiet" data-act="edit" data-id="' + esc(t.id) + '">Edit ticket</button><button class="btn quiet red" data-act="delete" data-id="' + esc(t.id) + '">Delete ticket</button>'
+    : (canEditOwn ? '<button class="btn quiet" data-act="edit" data-id="' + esc(t.id) + '">Edit ticket</button>' : '');
   return core + (canType ? '<button class="btn quiet" data-act="settype" data-id="' + esc(t.id) + '">Set order type</button>' : '') + admin;
 }
 
@@ -1000,22 +1002,22 @@ function actionDialog(kind, id){
       { name:'cycle', label:'Cycle', type:'select', options:keep(cycles, t.cycle), value:(t.cycle || ''), placeholder:'No cycle' },
       { name:'issue', label:'Issue', type:'textarea', value:(t.issue || '') }
     ];
-    if(t.status === 'Resolved'){
+    if(S.me.admin && t.status === 'Resolved'){
       fields.push({ name:'newOrderNumber', label:'New order number', value:(t.newOrderNumber || '') });
       fields.push({ name:'resolutionNote', label:'Resolution note', type:'textarea', value:(t.resolutionNote || '') });
     }
     // Admin only: send the ticket to the Retail Issue Tracker from here (for when the person who opened it forgot).
     const sendAgain = !!t.retailIssueId && t.retailStatus === 'Answered';
-    const canSendRetail = (!t.retailIssueId || sendAgain) && t.status !== 'Resolved';
+    const canSendRetail = S.me.admin && (!t.retailIssueId || sendAgain) && t.status !== 'Resolved';
     if(canSendRetail){
       fields.push(sendAgain
         ? { name:'retailComment', label:'Send to Retail Tracker AGAIN, what is still wrong? Mohamed Sayed will see this (leave empty to NOT send)', type:'textarea', placeholder:'For example: the quantity is still not corrected' }
         : { name:'retailComment', label:'Send to Retail Tracker: comment for Mohamed Sayed (leave empty to NOT send)', type:'textarea', placeholder:(lastComment(t) || t.issue || '') });
     }
     ask({
-      title:'Edit ' + t.orderNumber, intro:'Fix what is wrong. Who holds the ticket and its status do not change, and every change is written in the history.', confirm:'Save changes', fields:fields,
+      title:'Edit ' + t.orderNumber, intro:(S.me.admin ? 'Fix what is wrong.' : 'Fix what is wrong in your ticket.') + ' Who holds the ticket and its status do not change, and every change is written in the history.', confirm:'Save changes', fields:fields,
       savingLabel:'Saving…',
-      after:'<div class="field" style="border-top:1px solid var(--line);padding-top:14px;margin-top:4px">' +
+      after:!S.me.admin ? '' : '<div class="field" style="border-top:1px solid var(--line);padding-top:14px;margin-top:4px">' +
         '<label style="display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer">' +
         '<input type="checkbox" id="notifyUpdateChk"> Send a reminder email about this update</label>' +
         '<p style="margin:4px 0 0;color:var(--muted);font-size:13px">Goes to the person holding the ticket, the person who opened it, and the other admins.</p>' +
@@ -1024,6 +1026,7 @@ function actionDialog(kind, id){
         '<textarea class="in" id="notifyUpdateInput" dir="auto"></textarea></div></div>',
       onOpen:function(){
         const c = document.getElementById('notifyUpdateChk'), w = document.getElementById('notifyUpdateWrap');
+        if(!c) return;
         c.addEventListener('change', function(){ w.classList.toggle('hidden', !c.checked); if(c.checked) document.getElementById('notifyUpdateInput').focus(); });
       },
       run:async function(v){
