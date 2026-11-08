@@ -739,6 +739,7 @@ function wrongApproval(invText, apprText) {
   if (p.card && b.card) {
     const x = cn(p.card), y = cn(b.card);
     if (x === y || x.includes(y) || y.includes(x)) return false;
+    if (apprText.includes(OCR_MARK) && lev0(x, y) < 2) return false;      // read by OCR: one wrong digit is not a different patient
     // numbers differ: when both names can be compared and they share a word it is the same person (number read wrongly)
     if (p.name && b.name && sameWords(p.name, b.name) && nameTokens(p.name).length && nameTokens(b.name).length &&
         ((isArabic(p.name) && isArabic(b.name)) || (isLatin(p.name) && isLatin(b.name) && !isArabic(p.name) && !isArabic(b.name)))) return false;
@@ -763,10 +764,55 @@ const strengthOK = (tk, rowTokens) => { const set = pairsOf(rowTokens); return t
 const hasWord = (ts, key) => ts.some(t => t === key || (t.length >= 5 && key.length >= 5 && (t.startsWith(key) || key.startsWith(t))));
 const HEADS = ['Qty', 'ICD', 'Name', 'Unit', 'Dis.', 'Cop.', 'Net', 'Status'];
 
+
+// ------------------------------------------------------------------ approvals drawn as images/shapes: rows from OCR words
+let OCR = {};
+const OCR_MARK = '\u2063';
+const lev0 = (a, b) => { const d = []; for (let i = 0; i <= a.length; i++) d[i] = [i]; for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); return d[a.length][b.length]; };
+function ocrPageData(res, pageHpt) {
+  const W = (res.words || []).filter(w => w && String(w.t).trim());
+  if (!W.length) return { text: '', rows: [], empty: true };
+  const hs = W.map(w => w.y1 - w.y0).sort((a, b) => a - b), mh = hs[hs.length >> 1] || 10;
+  const cy = w => (w.y0 + w.y1) / 2, cx = w => (w.x0 + w.x1) / 2;
+  const sorted = W.slice().sort((a, b) => cy(a) - cy(b));
+  const lines = [];
+  sorted.forEach(w => { const l = lines[lines.length - 1]; if (l && Math.abs(cy(w) - l.y) < 0.6 * mh) { l.w.push(w); l.y = (l.y * (l.w.length - 1) + cy(w)) / l.w.length; } else lines.push({ y: cy(w), w: [w] }); });
+  const texts = lines.map(l => l.w.sort((a, b) => a.x0 - b.x0).map(w => String(w.t).trim()).join(' '));
+  const text = texts.map(t => t.replace(/(Beneficiary Name\s*:\s*\d+\s*\/).*$/, '$1')).join('\n');
+  // table
+  const scale = res.h / (pageHpt || 792), tol = 14 * scale;
+  const clean = t => String(t).trim().replace(/[:|]+$/, '');
+  const q = W.find(w => clean(w.t) === 'Qty');
+  const rows = [];
+  if (q) {
+    const hd = W.filter(w => Math.abs(cy(w) - cy(q)) < mh * 0.8 && HEADS.some(h => h === clean(w.t) || h === clean(w.t) + '.'));
+    if (hd.length >= 5) {
+      const centers = hd.map(w => ({ name: HEADS.find(h => h === clean(w.t) || h === clean(w.t) + '.'), c: cx(w) }));
+      const footer = W.filter(w => /^Items$/i.test(clean(w.t)) && cy(w) > cy(q)).map(cy).sort((a, b) => a - b)[0];
+      const skip = /^(Total|Unit|Special|instructions|Provider|Notes|:)$/i;
+      const colOf = w => { let b = null; centers.forEach(h => { if (!b || Math.abs(h.c - cx(w)) < Math.abs(b.c - cx(w))) b = h; }); return b.name; };
+      const body = W.filter(w => cy(w) > cy(q) + mh * 0.5 && (footer === undefined || cy(w) < footer - mh * 0.5) && !skip.test(clean(w.t)));
+      const anchors = body.filter(w => colOf(w) === 'Qty' && /^\d+(?:[.,]\d+)?\s*[\/|]\s*\S/.test(String(w.t).trim())).sort((a, b) => cy(a) - cy(b));
+      const mine = anchors.map(w => ({ qty: parseFloat(String(w.t).replace(',', '.')), name: [], dis: [], net: [], stat: [], top: cy(w) }));
+      const near = w => { let b = null; mine.forEach(m => { if (!b || Math.abs(m.top - cy(w)) < Math.abs(b.top - cy(w))) b = m; }); return b && Math.abs(b.top - cy(w)) <= tol ? b : null; };
+      body.forEach(w => { const c = colOf(w); if (!['Name', 'Dis.', 'Net', 'Status'].includes(c)) return; const m = near(w); if (!m) return; (c === 'Name' ? m.name : c === 'Dis.' ? m.dis : c === 'Net' ? m.net : m.stat).push(w); });
+      const numOf = ws => toMicro(ws.sort((a, b) => cy(a) - cy(b)).map(w => String(w.t).trim().replace(',', '.')).join(''));
+      mine.forEach(m => { const nt = numOf(m.net), dt = numOf(m.dis);
+        m.gross = nt !== null && dt !== null ? nt + dt : null;
+        m.status = m.stat.map(w => String(w.t).trim()).join(' ');
+        m.bad = /deleted|rejected|replaced|cancel/i.test(m.status);
+        m.nameText = m.name.sort((a, b) => cy(a) - cy(b) || a.x0 - b.x0).map(w => String(w.t).trim()).join(' ');
+        m.tokens = wordTokens(m.nameText); rows.push({ qty: m.qty, name: [], gross: m.gross, status: m.status, bad: m.bad, nameText: m.nameText, tokens: m.tokens, top: m.top }); });
+    }
+  }
+  return { text, rows, ocr: true };
+}
 // the item lines of an approval (quantity and name of every line)
 function approvalRows(L, ctx, pages, idxs) {
   const rows = []; let centers = null;
   for (const pi of idxs) {
+    if (OCR[pi]) { OCR[pi].rows.forEach(r => rows.push(r)); continue; }
     const scan = scanPage(L, ctx, pages[pi]);
     const runs = scan.runs.filter(r => r.text.trim() !== '');
     const cen = r => r.x + runWidth(scan.fonts[r.font], r) / 2;
@@ -875,12 +921,24 @@ async function processPdf(fileBytes, opts) {
 
   // 1) read every page once
   const info = new Array(N);
+  OCR = {};
   let inInvoice = false;       // pages of an invoice (it may run over several pages) keep their parsed content
   for (let i = 0; i < N; i++) {
     const scan = scanPage(L, ctx, pages[i]);
-    const text = pageText(scan);
-    if (/Pharmacy Invoice/.test(text)) inInvoice = true; else if (/Reciept #/.test(text)) inInvoice = false;
-    info[i] = { text, inv: inInvoice };       // parsed content is not kept (big files): invoice pages are re-read when needed
+    let text = pageText(scan), blank = false, ocrFail = false;
+    if (!text.trim()) {                                  // no text on the page: the approval may be drawn as an image / shapes -> read it by OCR
+      blank = true;
+      if (typeof opts.ocrPage === 'function') {
+        try {
+          const sz = pages[i].getSize();
+          const d = ocrPageData(await opts.ocrPage(i, sz), sz.height);
+          if (!d.empty) { OCR[i] = d; text = d.text + OCR_MARK; } else ocrFail = true;
+        } catch (err) { ocrFail = true; }
+        progress({ phase: 'Reading scanned pages (OCR)', done: i, total: N }); await tick();
+      } else ocrFail = true;
+    }
+    if (/Pharmacy Invoice/.test(text)) inInvoice = true; else if (/Reciept #/.test(text) || blank) inInvoice = false;
+    info[i] = { text, inv: inInvoice, blank, ocrFail };       // parsed content is not kept (big files): invoice pages are re-read when needed
     if (i % 25 === 0) { progress({ phase: 'Reading pages', done: i, total: N }); await tick(); }
   }
   progress({ phase: 'Reading pages', done: N, total: N });
@@ -905,7 +963,9 @@ async function processPdf(fileBytes, opts) {
     const [s, e] = orders[oi];
     const label = (/Order Number:?\s*(\S+)/.exec(info[s].text) || [])[1] || `pages ${s + 1}-${e}`;
     const recStarts = []; for (let i = s + 1; i < e; i++) if (/Reciept #/.test(info[i].text)) recStarts.push(i);
-    const invEnd = recStarts.length ? recStarts[0] : e;
+    const blanks = []; if (!recStarts.length) for (let i = s + 1; i < e; i++) if (info[i].blank) blanks.push(i);   // pages with no readable text (approval drawn as shapes/images)
+    const firstBlank = (() => { for (let i = s + 1; i < e; i++) if (info[i].blank) return i; return -1; })();
+    const invEnd = recStarts.length ? recStarts[0] : (firstBlank >= 0 ? firstBlank : e);
     const hasInvoice = /Pharmacy Invoice/.test(info[s].text);
     const stamp = hasInvoice && numbering ? serial++ : null;      // one number per order
     const mk = (i, st) => { const it = { src: i }; if (st && stamp !== null) it.stamp = stamp; return it; };
@@ -913,6 +973,12 @@ async function processPdf(fileBytes, opts) {
     if (!hasInvoice) {
       for (let i = s; i < e; i++) plan.push({ src: i });
       report.push({ order: label, status: 'UNCHANGED - needs review', problems: ['these pages do not start with an invoice page (the file may start in the middle of an order)'], approvals: recStarts.length });
+      continue;
+    }
+    if (blanks.length) {
+      const ie = Math.min(invEnd, blanks[0]);
+      for (let i = s; i < e; i++) plan.push(mk(i, i < ie));
+      report.push({ order: label, status: 'UNCHANGED - needs review', problems: ['approval page(s) could not be read (' + blanks.length + ' page' + (blanks.length > 1 ? 's' : '') + ' without text - the approval is an image/drawing and the OCR reader found nothing)'], approvals: blanks.length, serial: stamp });
       continue;
     }
     // approvals, with exact duplicates (same number, same content) taken out
@@ -1138,7 +1204,7 @@ async function numberPdf(fileBytes, opts) {
       const ord = (/Order Number:?\s*(\S+)/.exec(text) || [])[1] || null;
       if (cur === null || !ord || ord !== lastOrder) { cur = cur === null ? start : cur + 1; orders++; if (first === null) first = cur; }
       lastOrder = ord;
-    } else if (/Reciept #/.test(text)) inInvoice = false;
+    } else if (/Reciept #/.test(text) || !text.trim()) inInvoice = false;     // approval pages (or pages with no text) are never stamped
     if (inInvoice && cur !== null) {
       const pg = pages[i], sz = pg.getSize();
       const old = pg.node.get(L.PDFName.of('Contents'));
@@ -1342,6 +1408,39 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
     return sc;
   }
 
+  // ---- OCR for approval pages that are drawn as images/shapes (libraries are loaded only when such a page is met)
+  var ocrWorkerP = null;
+  function loadScript(src) { return new Promise(function (ok, no) { var t = document.createElement('script'); t.src = src; t.onload = ok; t.onerror = function () { no(new Error('could not load ' + src)); }; document.head.appendChild(t); }); }
+  function getOcrWorker() {
+    if (!ocrWorkerP) ocrWorkerP = (async function () {
+      var base = 'https://cdn.jsdelivr.net/npm/';
+      await loadScript(base + 'pdfjs-dist@3.11.174/build/pdf.min.js');
+      var wb = await (await fetch(base + 'pdfjs-dist@3.11.174/build/pdf.worker.min.js')).blob();
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(wb);
+      await loadScript(base + 'tesseract.js@5.1.1/dist/tesseract.min.js');
+      var w = await window.Tesseract.createWorker('eng');
+      await w.setParameters({ tessedit_pageseg_mode: '11' });
+      return w;
+    })();
+    ocrWorkerP.catch(function () { ocrWorkerP = null; });
+    return ocrWorkerP;
+  }
+  function makeOcr(bytes) {
+    var docP = null;
+    return async function (i) {
+      var w = await getOcrWorker();
+      if (!docP) docP = window.pdfjsLib.getDocument({ data: bytes.slice() }).promise;
+      var doc = await docP, page = await doc.getPage(i + 1);
+      var vp = page.getViewport({ scale: 200 / 72 });
+      var cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
+      await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+      var r = await w.recognize(cv), d = r.data, ws = d.words;
+      if (!ws) { ws = []; (d.blocks || []).forEach(function (b) { (b.paragraphs || []).forEach(function (p) { (p.lines || []).forEach(function (l) { (l.words || []).forEach(function (x) { ws.push(x); }); }); }); }); }
+      cv.width = cv.height = 0;
+      return { words: ws.map(function (x) { return { t: x.text, x0: x.bbox.x0, y0: x.bbox.y0, x1: x.bbox.x1, y1: x.bbox.y1 }; }), w: vp.width, h: vp.height };
+    };
+  }
+
   $('numbering').addEventListener('change', function () {
     $('startno').disabled = !this.checked; $('startwrap').style.opacity = this.checked ? '1' : '.5';
   });
@@ -1360,7 +1459,7 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
       try {
         var bytes = new Uint8Array(await f.arrayBuffer());
         var res = await window.SplitCore.processPdf(bytes, {
-          PDFLib: window.PDFLib, splitOnly: splitOnly, numbering: { enabled: useNum, start: nextNo },
+          PDFLib: window.PDFLib, splitOnly: splitOnly, numbering: { enabled: useNum, start: nextNo }, ocrPage: makeOcr(bytes),
           onProgress: function (p) { phase.textContent = p.phase + ' ' + p.done + ' / ' + p.total; fill.style.width = (p.total ? Math.round(100 * p.done / p.total) : 0) + '%'; }
         });
         if (useNum && res.stats.nextSerial != null) nextNo = res.stats.nextSerial;   // several files: keep counting
