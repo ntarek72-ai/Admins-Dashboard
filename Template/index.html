@@ -726,7 +726,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
     lineSub: [/^sub ?total$/], lineNet: [/^net$/], lineCopay: ['co payment %', 'order co payment', /^co ?payment/], lineCoval: [/^co ?val$/, /^co ?pay ?val$/, /^co(pay)?[ _]?val(ue)?$/],
     lineRate: ['rebates', 'rebets', 'reb', /^rebates? ?%?$/], lineLocal: [/is local$/, 'local'], lineImported: [/^imported$/], lineProd: [/^product( name)?$/, /^item$/, /product name$|full product|item description/, /^heisenberg|^hb id/],
     invKey: ['pos reference', 'order #', 'order number', '#order', 'so'], invNo: ['inv', 'invoic', 'invoice'], invGrand: [/^grand ?total$/, 'الاجمالي', 'الإجمالي'], invNet: [/^net$/, 'الصافي'],
-    invSub: [/^sub ?total$|^subtotral$/], invTotVal: [/^total ?val$/, 'اجمالي الخصم', 'إجمالي الخصم'], invCoval: [/^co ?val$|^coval$|^co(pay)?[ _]?val(ue)?$/, /^قيم[هة] التحمل$/]
+    invSub: [/^sub ?total$|^subtotral$/], invTotVal: [/^tot(al)? ?(val|vl|disc(ount)?)$/, /^disc(ount)?$/, /^total ?discount ?val/, 'اجمالي الخصم', 'إجمالي الخصم'], invCoval: [/^co ?val$|^coval$|^co(pay)?[ _]?val(ue)?$/, /^قيم[هة] التحمل$/]
   };
   function detect(XLSX, wb, opts) {
     opts = opts || {};
@@ -1383,6 +1383,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
       res.sheets.push(sheetRes);
     });
     res.sheets.forEach((sr) => { if (sr.matchedByValues) res.notes.push('Columns matched by their values (different names) in "' + sr.sheet + '": ' + sr.matchedByValues.join('; ') + '.'); });
+    res.filled = book; res.calc = calc; res.sheetOrder = Object.keys(tpl);
     res.ok = res.sheets.length > 0 && res.counts.cells > 0;
     res.unsupportedFns = calc.unsupported ? Object.keys(calc.unsupported) : [];
     return res;
@@ -1480,6 +1481,27 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
     try { lastTpl = window.TplReview.compare(toSheets(window.XLSX, lastProfile.tplWb), toSheets(window.XLSX, lastWb), { lineSheet: lastOpts.lineSheet, invSheet: lastOpts.invSheet }); }
     catch (e) { lastTpl = { ok: false, sheets: [], issues: [], notes: ['The template comparison could not run on this file.'], error: String(e && e.message || e), counts: {}, unsupported: {} }; }
   }
+  function downloadFilled() {
+    const T = lastTpl, X = window.XLSX; if (!T || !T.filled || !X) return;
+    const CODE = { '#N/A': 42, '#VALUE!': 15, '#DIV/0!': 7, '#REF!': 23, '#NAME?': 29, '#NUM!': 36 };
+    const wb = X.utils.book_new();
+    T.sheetOrder.forEach((n) => {
+      const s = T.filled[n]; if (!s) return; const ws = {}; let mr = 1, mc = 1;
+      Object.keys(s.cells).forEach((a) => {
+        const c = s.cells[a], m = /^([A-Z]+)(\d+)$/.exec(a), r = +m[2], ci = colIndex(m[1]) + 1; let cell = {};
+        if (c.f) {
+          const v = T.calc.getRC(n, r, ci); cell.f = c.f;
+          if (v && v.err) { cell.t = 'e'; cell.v = CODE[v.err] || 42; } else if (typeof v === 'number') { cell.t = 'n'; cell.v = v; } else if (typeof v === 'boolean') { cell.t = 'b'; cell.v = v; } else { cell.t = 's'; cell.v = v == null ? '' : String(v); }
+        } else if (typeof c.v === 'number') { cell.t = 'n'; cell.v = c.v; } else if (typeof c.v === 'boolean') { cell.t = 'b'; cell.v = c.v; } else if (c.v != null) { cell.t = 's'; cell.v = String(c.v); } else return;
+        ws[a] = cell; if (r > mr) mr = r; if (ci > mc) mc = ci;
+      });
+      ws['!ref'] = 'A1:' + colLetter(mc - 1) + mr;
+      const tw = lastProfile && lastProfile.tplWb && lastProfile.tplWb.Sheets[n]; if (tw && tw['!cols']) ws['!cols'] = tw['!cols'];
+      X.utils.book_append_sheet(wb, ws, n);
+    });
+    wb.Workbook = { CalcPr: { fullCalcOnLoad: true } };
+    X.writeFile(wb, 'filled-' + (lastProfile ? lastProfile.name : 'template').replace(/[^A-Za-z0-9]+/g, '_') + '.xlsx');
+  }
   function tplHtml(T) {
     const bad = T.issues.length, nm = lastProfile ? lastProfile.name : '';
     let h = '';
@@ -1546,7 +1568,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
     if (res.totals.length) {
       const T = res.info.mode === 'template';
       h += '<table class="ck-t"><thead><tr><th>Totals</th>' + (T ? '<th class="n">Template result</th>' : '') + '<th class="n">Sheet Per Line</th><th class="n">Sheet Per Invoice</th><th class="n">Sheet extra tab</th><th></th></tr></thead><tbody>' +
-        res.totals.map((t) => '<tr class="' + (t.ok ? '' : 'bad') + '"><td>' + esc(t.label) + '</td>' + (T ? '<td class="n">' + fmt(t.calc) + '</td>' : '') + '<td class="n">' + fmt(t.perLine) + '</td><td class="n">' + fmt(t.perInvoice) + '</td><td class="n">' + fmt(t.extra) + '</td><td>' + (t.ok ? '&#10003;' : '&#10007;') + '</td></tr>').join('') + '</tbody></table>';
+        res.totals.map((t) => '<tr class="' + (t.ok ? '' : 'bad') + '"><td>' + esc(t.label) + '</td>' + (T ? '<td class="n">' + fmt(t.calc) + '</td>' : '') + '<td class="n">' + fmt(t.perLine) + '</td><td class="n">' + (t.perInvoice == null || t.perInvoice === '' ? '<span class="meta">column not found</span>' : fmt(t.perInvoice)) + '</td><td class="n">' + fmt(t.extra) + '</td><td>' + (t.ok ? '&#10003;' : '&#10007;') + '</td></tr>').join('') + '</tbody></table>';
     }
     if (res.invoiceRows.length) {
       const rows = res.invoiceRows, nBad = rows.filter((r) => r.status !== 'OK').length;
@@ -1571,13 +1593,14 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
     }
     h += '<div class="tools" style="margin-top:14px"><button class="btn solid" id="ckDl" type="button" style="min-height:44px">Download result (Excel)</button></div>';
     if (lastTpl && lastTpl.ok) {
-      h = tplHtml(lastTpl) + '<div class="tools" style="margin-top:14px"><button class="btn solid" id="ckDlT" type="button" style="min-height:44px">Download result (Excel)</button></div><details class="ck-tabs" style="margin-top:18px"><summary class="meta" style="cursor:pointer;margin:0"><b>Extra check</b> &mdash; rates and totals worked out from the lines' + (bad ? ' (' + bad + ' difference' + (bad === 1 ? '' : 's') + ')' : ' (no differences)') + '</summary><div style="margin-top:8px">' + h + '</div></details>';
+      h = tplHtml(lastTpl) + '<div class="tools" style="margin-top:14px"><button class="btn solid" id="ckDlT" type="button" style="min-height:44px">Download result (Excel)</button> <button class="btn" id="ckDlF" type="button" style="min-height:44px">Download the template filled with your data</button></div><div class="meta" style="margin-top:6px">The filled template has your lines pasted into Per Line and every formula calculated, so you can look at it yourself. Colours are not kept.</div><details class="ck-tabs" style="margin-top:18px"><summary class="meta" style="cursor:pointer;margin:0"><b>Extra check</b> &mdash; rates and totals worked out from the lines' + (bad ? ' (' + bad + ' difference' + (bad === 1 ? '' : 's') + ')' : ' (no differences)') + '</summary><div style="margin-top:8px">' + h + '</div></details>';
     } else if (lastTpl && lastTpl.notes && lastTpl.notes.length) {
       h = '<div class="meta" style="color:#7A4B00">&#9888; Comparison with the template did not run: ' + esc(lastTpl.notes[0]) + ' Showing the basic check instead.</div>' + h;
     }
     $('ckOut').innerHTML = h;
     $('ckDl').addEventListener('click', download);
     if ($('ckDlT')) $('ckDlT').addEventListener('click', download);
+    if ($('ckDlF')) $('ckDlF').addEventListener('click', downloadFilled);
     if ($('ckOnly')) $('ckOnly').addEventListener('change', (e) => { onlyDiff = e.target.checked; render(last); });
     $('ckLT').addEventListener('change', (e) => { lastOpts.lineSheet = e.target.value || ''; lastOpts.cols = null; analyze(); });
     $('ckIT').addEventListener('change', (e) => { lastOpts.invSheet = e.target.value || ''; lastOpts.cols = null; analyze(); });
