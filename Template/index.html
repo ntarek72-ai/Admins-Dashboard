@@ -97,6 +97,20 @@ select:focus-visible,.btn:focus-visible{outline:3px solid #14181F;outline-offset
 .xbtn{min-height:36px;padding:0 14px;border-radius:999px;border:1.5px solid #C0392B;background:transparent;color:#C0392B;font:700 13px 'Manrope',system-ui,sans-serif;cursor:pointer}
 .backup{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:13px;color:#5B6671;border-top:1px solid #E4E8EB;padding-top:16px}
 .backup .btn{min-height:38px;padding:0 16px;font-size:13px}
+.tools select[hidden]{display:none}
+.ckbox{background:#fff;border:1px solid #E4E8EB;border-radius:24px;padding:20px}
+.ck-banner{padding:14px 18px;border-radius:16px;font-weight:800;font-size:17px;margin-bottom:12px}
+.ck-banner.ok{background:#DDF3E8;color:#0E6B4F}.ck-banner.bad{background:#FBE1DE;color:#A02B20}.ck-banner.warn{background:#FFF1D6;color:#7A4B00}
+.ck-t{width:100%;border-collapse:collapse;font-size:14px;margin:8px 0 16px}
+.ck-t th{text-align:left;font-weight:800;padding:8px 10px;background:#F4F6F7;border-bottom:1px solid #E4E8EB}
+.ck-wrap .ck-t th{position:sticky;top:0;z-index:1}
+.ck-tabs label{white-space:nowrap}
+.ck-t td{padding:7px 10px;border-bottom:1px solid #EEF1F3;vertical-align:top}
+.ck-t td.n,.ck-t th.n{text-align:right;font-variant-numeric:tabular-nums}
+.ck-t tr.bad td{background:#FFF6F5}
+.ck-wrap{max-height:460px;overflow:auto;border:1px solid #E4E8EB;border-radius:14px}
+.ck-chips{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 12px}
+.ck-chip{font-size:13px;font-weight:700;padding:5px 12px;border-radius:999px;background:#FBE1DE;color:#A02B20}
 .emptyh{padding:18px;font-size:15px;color:#5B6671}
 .lbl{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#4B5560}
 .lbl input[type=date]{min-height:44px}
@@ -204,6 +218,23 @@ select:focus-visible,.btn:focus-visible{outline:3px solid #14181F;outline-offset
     </div>
   </section>
 
+  <section id="checker">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <h2>Review a sheet</h2>
+      <div style="font-size:15px;color:#5B6671">Upload the sheet you want to check. It is read inside your browser and is not uploaded anywhere.</div>
+    </div>
+    <div class="ckbox">
+      <div class="tools">
+        <select id="ckCo" aria-label="Company"></select>
+        <select id="ckTpl" aria-label="Template" hidden></select>
+        <label class="btn solid" for="ckFile" style="min-height:44px;cursor:pointer">Choose Excel file</label>
+        <input type="file" id="ckFile" accept=".xlsx,.xlsm,.xls" hidden>
+        <span id="ckName" class="meta" style="margin:0;align-self:center"></span>
+      </div>
+      <div id="ckOut"><div class="emptyh">Pick the company, then choose the sheet. The page takes the raw lines from your sheet, runs them through that company's own template from this site (its columns and its formulas), and compares every column with your sheet's Per Line, Per Invoice and extra tabs, like doing it by hand.</div></div>
+    </div>
+  </section>
+
   <section id="howto">
     <h2>How it works</h2>
     <div class="steps">
@@ -230,12 +261,13 @@ const LIST = [
   ['Ahly Medical', 'W'],
   ['Ain Shams University', ''],
   ['Anabib El Petrol', 'ONLYW'],
-  ['Apatch Petroleum', ''],
+  ['Apatch Petroleum', 'W'],
   ['AXA Services Egypt', 'WV'],
   ['Bupa', 'WV'],
   ['Care Plus', ''],
   ['Cheiron - Pico Petroleum', ''],
   ['Cinema Syndicate', ''],
+  ['City Stars', 'ONLYW'],
   ['Cinnabon', 'W'],
   ['DES', ''],
   ['DMS', ''],
@@ -329,7 +361,9 @@ const READY = {
   'Cinema Syndicate': { desc: 'Per Line and Per Invoice. Paste the month data into Per Line and Per Invoice fills itself.', files: [ { label: 'Cinema Syndicate', full: 'Cinema Syndicate', file: 'Cinema_Syndicate_Chronic_Template.xlsx' } ] },
   'Cheiron - Pico Petroleum': { desc: 'Per Line and Per Invoice. Paste the month data into Per Line and Per Invoice fills itself.', files: [ { label: 'Cheiron - Pico Petroleum', full: 'Cheiron - Pico Petroleum', file: 'Pico_Chronic_Template.xlsx' } ] },
   'Care Plus': { desc: 'Per Line and Per Invoice. Paste the month data into Per Line and Per Invoice fills itself.', files: [ { label: 'Care Plus', full: 'Care Plus', file: 'Care_Plus_Chronic_Template.xlsx' } ] },
-  'Apatch Petroleum': { desc: 'Per Line and Per Invoice. Paste the month data into Per Line and Per Invoice fills itself.', files: [ { label: 'Apatch Petroleum', full: 'Apatch Petroleum', file: 'Apatch_Petroleum_Chronic_Template.xlsx' } ] },
+  'Apatch Petroleum (Chronic)': { desc: 'Per Line and Per Invoice. Paste the month data into Per Line and Per Invoice fills itself.', files: [ { label: 'Apatch Petroleum', full: 'Apatch Petroleum', file: 'Apatch_Petroleum_Chronic_Template.xlsx' } ] },
+  'Apatch Petroleum (Walk In)': { desc: 'Per Line and Per Invoice. Paste the month data into Per Line and Per Invoice fills itself.', files: [ { label: 'Apatch Petroleum Walk In', full: 'Apatch Petroleum Walk In', file: 'Apatch_Petroleum_Walk_In_Template.xlsx' } ] },
+  'City Stars (Walk In)': { desc: 'Per Line and Per Invoice, plus the Arabic Template tab (the claim statement) that fills itself. Paste the month data into Per Line.', files: [ { label: 'City Stars Walk In', full: 'City Stars Walk In', file: 'City_Stars_Walk_In_Template.xlsx' } ] },
   'Ahly Medical (Chronic)': { desc: 'Per Line and Per Invoice. One invoice per Order # and Approval Ref, like the sheet you use today.', files: [ { label: 'Ahly Medical Chronic', full: 'Ahly Medical Chronic', file: 'Ahly_Medical_Chronic_Template.xlsx' } ] },
   'Ahly Medical (Walk In)': { desc: 'Per Line and Per Invoice. Paste the month data into Per Line and Per Invoice fills itself.', files: [ { label: 'Ahly Medical Walk In', full: 'Ahly Medical Walk In', file: 'Ahly_Medical_Walk_In_Template.xlsx' } ] },
   'Administrative Control Authority (ACA) (Chronic)': { desc: 'Per Line and Per Invoice. Paste the month data into Per Line and Per Invoice fills itself.', files: [ { label: 'ACA Chronic', full: 'ACA Chronic', file: 'ACA_Chronic_Template.xlsx' } ] },
@@ -656,6 +690,945 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
   document.addEventListener('visibilitychange', () => { if (!document.hidden && !pending.length && !flushing) loadRemote(true); });
 
   renderAll(); stateLine(); loadRemote();
+})();
+</script>
+<script>
+/* ===== Sheet review engine (no DOM). window.ClaimsReview.run(XLSX, workbook, profile) =====
+   With template rates in the profile it does what you do by hand: takes the raw lines of the sheet,
+   calculates Per Line / Per Invoice the way the TEMPLATE does, and compares that with the sheet. */
+(function (root) {
+  const norm = (s) => String(s == null ? '' : s).toLowerCase().replace(/\s+/g, ' ').replace(/[?:]+$/g, '').trim();
+  const isNum = (v) => typeof v === 'number' && isFinite(v);
+  const num = (v) => { if (isNum(v)) return v; if (v == null || v === '') return 0; const n = parseFloat(String(v).replace(/,/g, '')); return isFinite(n) ? n : 0; };
+  const has = (v) => v !== null && v !== undefined && String(v).trim() !== '';
+  const keyOf = (v) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+  const r4 = (x) => Math.round(x * 10000) / 10000;
+  const PROFILES = { generic: { name: 'Calculation checks only', localRate: null, impRate: null } };
+
+  function table(XLSX, ws) {
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+    let h = -1;
+    for (let i = 0; i < Math.min(rows.length, 6); i++) {
+      const n = (rows[i] || []).filter((c) => typeof c === 'string' && c.trim()).length;
+      if (n >= 4) { h = i; break; }
+    }
+    return h < 0 ? null : { head: rows[h].map(norm), rows: rows, h: h };
+  }
+  function col(t, aliases) {
+    for (const a of aliases) {
+      const i = t.head.findIndex((x) => (a instanceof RegExp ? a.test(x) : x === a));
+      if (i >= 0) return i;
+    }
+    return -1;
+  }
+  const A = {
+    lineKey: ['pos reference', 'order #', 'order number', '#order', /^order ref/, 'so'], lineTotal: ['total delivered', 'product total', 'item total price (egp)'], lineDisc: [/^disc(ount)?$/, /^dis$/],
+    lineSub: [/^sub ?total$/], lineNet: [/^net$/], lineCopay: ['co payment %', 'order co payment', /^co ?payment/], lineCoval: [/^co ?val$/, /^co ?pay ?val$/, /^co(pay)?[ _]?val(ue)?$/],
+    lineRate: ['rebates', 'rebets', 'reb', /^rebates? ?%?$/], lineLocal: [/is local$/, 'local'], lineImported: [/^imported$/], lineProd: [/^product( name)?$/, /^item$/, /product name$|full product|item description/, /^heisenberg|^hb id/],
+    invKey: ['pos reference', 'order #', 'order number', '#order', 'so'], invNo: ['inv', 'invoic', 'invoice'], invGrand: [/^grand ?total$/, 'الاجمالي', 'الإجمالي'], invNet: [/^net$/, 'الصافي'],
+    invSub: [/^sub ?total$|^subtotral$/], invTotVal: [/^total ?val$/, 'اجمالي الخصم', 'إجمالي الخصم'], invCoval: [/^co ?val$|^coval$|^co(pay)?[ _]?val(ue)?$/, /^قيم[هة] التحمل$/]
+  };
+  function detect(XLSX, wb, opts) {
+    opts = opts || {};
+    const out = { line: null, inv: null, tpl: null, tables: {} };
+    wb.SheetNames.forEach((name) => {
+      const t = table(XLSX, wb.Sheets[name]); if (!t) return;
+      out.tables[name] = t;
+      const c = { name: name, t: t };
+      if (t.head.some((x) => x === 'اجمالي الفاتورة')) { if (!out.tpl) out.tpl = c; return; }
+      if (col(t, A.invGrand) >= 0 && col(t, A.invNet) >= 0 && col(t, A.lineProd) < 0) { if (!out.inv) out.inv = c; return; }
+      if (col(t, A.lineTotal) >= 0 && (col(t, A.lineDisc) >= 0 || col(t, A.lineRate) >= 0) && col(t, A.lineProd) >= 0) { if (!out.line) out.line = c; }
+    });
+    if (opts.lineSheet && out.tables[opts.lineSheet]) out.line = { name: opts.lineSheet, t: out.tables[opts.lineSheet] };
+    if (opts.invSheet && out.tables[opts.invSheet]) out.inv = { name: opts.invSheet, t: out.tables[opts.invSheet] };
+    return out;
+  }
+
+  function run(XLSX, wb, profile, opts) {
+    profile = profile || PROFILES.generic;
+    const tpl = profile.localRate != null && profile.impRate != null;
+    const issues = [], notes = [], totals = [];
+    const d = detect(XLSX, wb, opts);
+    const info = { tabs: wb.SheetNames.slice(), perLine: d.line && d.line.name, perInvoice: d.inv && d.inv.name, extra: d.tpl && d.tpl.name, mode: tpl ? 'template' : 'basic' };
+    const add = (check, sheet, row, ref, field, got, exp) => issues.push({ check: check, sheet: sheet, row: row, ref: ref, field: field, got: r4(got), expected: exp == null ? '' : r4(exp), diff: exp == null ? '' : r4(got - exp) });
+    if (!d.line) notes.push('Per Line tab was not found. It needs a Total (Total Delivered / Product Total), a Discount and a Product column. Pick the tab yourself below.');
+    if (!d.inv) notes.push('Per Invoice tab was not found. It needs Grand Total and NET columns. Pick the tab yourself below.');
+
+    /* ---- Per Line ---- */
+    const L = {}, lines = [], TOL = 0.011;
+    if (d.line) {
+      const t = d.line.t, nm = d.line.name;
+      info.lineHead = t.head;
+      Object.keys(A).filter((k) => k.indexOf('line') === 0).forEach((k) => { L[k] = col(t, A[k]); });
+      if (L.lineTotal < 0) notes.push('Per Line tab "' + nm + '" has no Total column (Total Delivered / Product Total). Columns found: ' + t.head.filter(Boolean).slice(0, 14).join(', ') + '.');
+      if (opts && opts.cols && opts.cols.line) Object.keys(opts.cols.line).forEach((k) => { const v = opts.cols.line[k]; if (v === '' || v == null) return; L[k] = +v; });
+      if (L.lineKey < 0) notes.push('Per Line tab "' + nm + '": no Pos Reference / Order # / Order Number column, so invoices cannot be matched.');
+      if (tpl && L.lineLocal < 0 && L.lineImported < 0) notes.push('Per Line: no Local column, so the rebate % could not be applied per line.');
+      for (let i = t.h + 1; i < t.rows.length; i++) {
+        const r = t.rows[i] || [];
+        const key = L.lineKey >= 0 ? keyOf(r[L.lineKey]) : '';
+        if (!key) continue;
+        const o = { row: i + 1, key: key, total: num(r[L.lineTotal]), disc: L.lineDisc >= 0 ? num(r[L.lineDisc]) : 0, sub: L.lineSub >= 0 ? num(r[L.lineSub]) : null, net: L.lineNet >= 0 ? num(r[L.lineNet]) : null, copay: L.lineCopay >= 0 ? num(r[L.lineCopay]) : 0, coval: L.lineCoval >= 0 ? num(r[L.lineCoval]) : 0, rate: null, local: null };
+        if (L.lineRate >= 0 && has(r[L.lineRate])) { const x = num(r[L.lineRate]); o.rate = x > 1 ? x / 100 : x; }
+        if (L.lineDisc < 0 && o.rate != null) o.disc = o.total * o.rate;
+        if (L.lineLocal >= 0) { const v = r[L.lineLocal]; o.local = v === true || /^true$/i.test(String(v)); }
+        else if (L.lineImported >= 0) { const v = r[L.lineImported]; o.local = !(v === true || /^true$/i.test(String(v))); }
+        if (tpl && o.local !== null) {
+          const eD = o.total * (o.local ? profile.localRate : profile.impRate), eS = o.total - eD;
+          const eC = profile.coLine === 'sub' ? o.copay * eS / 100 : profile.coLine === 'total' ? o.copay * o.total / 100 : o.coval;
+          o.eD = eD; o.eS = eS; o.eC = eC; o.eN = eS - eC;
+          if (Math.abs(o.disc - eD) > TOL) add('Line vs template: discount', nm, o.row, key, 'Discount', o.disc, eD);
+          if (o.sub != null && Math.abs(o.sub - eS) > TOL) add('Line vs template: subtotal', nm, o.row, key, 'Subtotal', o.sub, eS);
+          if (profile.coLine && L.lineCoval >= 0 && Math.abs(o.coval - eC) > TOL) add('Line vs template: co val', nm, o.row, key, 'Co val', o.coval, eC);
+          if (o.net != null && Math.abs(o.net - o.eN) > TOL) add('Line vs template: net', nm, o.row, key, 'Net', o.net, o.eN);
+        } else {
+          if (o.rate != null && Math.abs(o.disc - o.total * o.rate) > TOL) add('Line: discount ≠ total × rebate %', nm, o.row, key, 'Discount', o.disc, o.total * o.rate);
+          if (o.sub != null && Math.abs(o.sub - (o.total - o.disc)) > TOL) add('Line: subtotal ≠ total − discount', nm, o.row, key, 'Subtotal', o.sub, o.total - o.disc);
+          if (o.net != null && o.sub != null && Math.abs(o.net - (o.sub - o.coval)) > TOL) add('Line: net ≠ subtotal − co val', nm, o.row, key, 'Net', o.net, o.sub - o.coval);
+        }
+        lines.push(o);
+      }
+    }
+    info.lineCols = L;
+    /* per-invoice aggregates: sheet lines as they are (s) and template-calculated (e) */
+    const byKey = {};
+    lines.forEach((o) => {
+      const a = byKey[o.key] || (byKey[o.key] = { copay: o.copay, s: { total: 0, disc: 0, sub: 0, net: 0, co: 0 }, e: { total: 0, disc: 0, co: 0 } });
+      a.s.total += o.total; a.s.disc += o.disc; a.s.sub += (o.sub == null ? o.total - o.disc : o.sub); a.s.net += (o.net == null ? 0 : o.net); a.s.co += o.coval;
+      a.e.total += o.total; a.e.disc += (o.eD == null ? o.disc : o.eD); a.e.co += (o.eC == null ? o.coval : o.eC);
+    });
+    Object.keys(byKey).forEach((k) => {
+      const a = byKey[k], s = a.s;
+      if (tpl) {
+        const e = a.e; e.sub = e.total - e.disc;
+        const co = profile.coInv === 'sub' ? a.copay * e.sub / 100 : profile.coInv === 'grand' ? a.copay * e.total / 100 : e.co;
+        e.co = co; e.net = e.sub - co; a.x = e;
+      } else a.x = { total: s.total, disc: s.disc, sub: s.sub, co: s.co, net: s.net };
+    });
+
+    /* ---- Per Invoice ---- */
+    const invs = [], byNo = {}, invRows = [];
+    if (d.inv) {
+      const t = d.inv.t, nm = d.inv.name, T = 0.02;
+      const C = { key: col(t, A.invKey), no: col(t, A.invNo), grand: col(t, A.invGrand), net: col(t, A.invNet), sub: col(t, A.invSub), tv: col(t, A.invTotVal), co: col(t, A.invCoval) };
+      if (opts && opts.cols && opts.cols.inv) Object.keys(opts.cols.inv).forEach((k) => { const v = opts.cols.inv[k]; if (v === '' || v == null) return; C[k] = +v; });
+      info.invHead = t.head; info.invCols = C;
+      if (C.grand < 0 || C.net < 0) notes.push('Per Invoice tab "' + nm + '" has no ' + (C.grand < 0 ? 'Grand Total' : 'NET') + ' column, so it cannot be compared. Columns found: ' + t.head.filter(Boolean).slice(0, 14).join(', ') + '.');
+      if (C.key < 0) notes.push('Per Invoice tab "' + nm + '" has no Pos Reference / Order # / Order Number column, so invoices cannot be matched.');
+      const who = tpl ? 'Invoice vs template: ' : 'Invoice vs Per Line: ';
+      for (let i = t.h + 1; i < t.rows.length; i++) {
+        const r = t.rows[i] || [];
+        const key = C.key >= 0 ? keyOf(r[C.key]) : '';
+        if (!key) continue;
+        const o = { row: i + 1, key: key, no: C.no >= 0 ? r[C.no] : null, grand: num(r[C.grand]), net: num(r[C.net]), sub: C.sub >= 0 ? num(r[C.sub]) : null, tv: C.tv >= 0 ? num(r[C.tv]) : null, co: C.co >= 0 ? num(r[C.co]) : 0 };
+        invs.push(o); if (isNum(o.no)) byNo[o.no] = o;
+        const before = issues.length;
+        if (o.sub != null && o.tv != null && Math.abs(o.sub - (o.grand - o.tv)) > T) add('Invoice: subtotal ≠ grand total − total val', nm, o.row, key, 'Subtotal', o.sub, o.grand - o.tv);
+        if (o.sub != null && Math.abs(o.net - (o.sub - o.co)) > T) add('Invoice: net ≠ subtotal − co val', nm, o.row, key, 'Net', o.net, o.sub - o.co);
+        if (d.line) {
+          const a = byKey[key];
+          if (!a) add('Invoice is not in Per Line', nm, o.row, key, 'Grand Total', o.grand, null);
+          else {
+            const x = a.x;
+            if (Math.abs(o.grand - x.total) > T) add(who + 'grand total', nm, o.row, key, 'Grand Total', o.grand, x.total);
+            if (o.tv != null && Math.abs(o.tv - x.disc) > T) add(who + 'total discount', nm, o.row, key, 'Total val', o.tv, x.disc);
+            if (o.sub != null && Math.abs(o.sub - x.sub) > T) add(who + 'subtotal', nm, o.row, key, 'Subtotal', o.sub, x.sub);
+            if (C.co >= 0 && (!tpl || profile.coInv) && Math.abs(o.co - x.co) > T) add(who + 'co val', nm, o.row, key, 'Co val', o.co, x.co);
+            if ((tpl || L.lineNet >= 0) && Math.abs(o.net - x.net) > T) add(who + 'net', nm, o.row, key, 'Net', o.net, x.net);
+          }
+        }
+        const ax = byKey[key] ? byKey[key].x : null;
+        const bad = issues.slice(before).map((x) => x.field).filter((f, i, arr) => arr.indexOf(f) === i);
+        invRows.push({ key: key, row: o.row, sheet: { grand: o.grand, tv: o.tv, sub: o.sub, co: o.co, net: o.net }, calc: ax ? { grand: ax.total, tv: ax.disc, sub: ax.sub, co: ax.co, net: ax.net } : null, status: !ax ? 'Not in Per Line' : bad.length ? 'Differs' : 'OK', fields: bad });
+      }
+      if (d.line) {
+        const have = {}; invs.forEach((o) => { have[o.key] = 1; });
+        Object.keys(byKey).forEach((k) => { if (!have[k]) { add('Per Line invoice is not in Per Invoice', d.line.name, '', k, 'Grand Total', byKey[k].x.total, null); const x = byKey[k].x; invRows.push({ key: k, row: '', sheet: null, calc: { grand: x.total, tv: x.disc, sub: x.sub, co: x.co, net: x.net }, status: 'Not in Per Invoice', fields: [] }); } });
+      }
+    }
+
+    /* ---- Extra tab (Templet) ---- */
+    const ext = [];
+    if (d.tpl) {
+      const t = d.tpl.t, nm = d.tpl.name, who = tpl ? 'Extra tab vs template: ' : 'Extra tab vs Per Invoice: ';
+      const iNo = col(t, ['م']), iTot = col(t, ['اجمالي الفاتورة']), iAft = col(t, ['الاجمالي بعد الخصم']);
+      let tr = null;
+      for (let i = t.h + 1; i < t.rows.length; i++) {
+        const r = t.rows[i] || [];
+        if (iTot < 0 || !has(r[iTot])) continue;
+        if (!isNum(r[iNo])) { if (!tr || Math.abs(num(r[iTot])) > Math.abs(num(tr[iTot]))) tr = r; continue; }
+        const o = { row: i + 1, no: r[iNo], tot: num(r[iTot]), aft: iAft >= 0 ? num(r[iAft]) : null };
+        ext.push(o);
+        const inv = byNo[o.no];
+        if (d.inv && !inv) { add('Extra tab row is not in Per Invoice', nm, o.row, 'م ' + o.no, 'Total', o.tot, null); continue; }
+        if (inv) {
+          const a = byKey[inv.key], x = a ? a.x : { total: inv.grand, sub: inv.sub, net: inv.net };
+          if (Math.abs(o.tot - x.total) > 0.02) add(who + 'invoice total', nm, o.row, inv.key, 'اجمالي الفاتورة', o.tot, x.total);
+          if (o.aft != null) {
+            const okSub = x.sub != null && Math.abs(o.aft - x.sub) <= 0.02, okNet = x.net != null && Math.abs(o.aft - x.net) <= 0.02;
+            if (!okSub && !okNet) add(who + 'amount after discount', nm, o.row, inv.key, 'الاجمالي بعد الخصم', o.aft, x.sub != null ? x.sub : x.net);
+          }
+        }
+      }
+      if (d.inv) { const seen = {}; ext.forEach((o) => { seen[o.no] = 1; }); invs.forEach((o) => { if (isNum(o.no) && !seen[o.no]) add('Per Invoice row is not in Extra tab', nm, '', o.key, 'Grand Total', o.grand, null); }); }
+      if (tr && ext.length) { const calc = ext.reduce((s, x) => s + x.tot, 0); if (Math.abs(num(tr[iTot]) - calc) > 0.05) add('Extra tab: total row ≠ sum of rows', nm, '', 'Total row', 'اجمالي الفاتورة', num(tr[iTot]), calc); }
+    }
+
+    /* ---- Totals comparison ---- */
+    const sum = (arr, f) => arr.reduce((s, x) => s + (f(x) || 0), 0);
+    const keys = Object.keys(byKey), xs = keys.map((k) => byKey[k].x);
+    if (lines.length || invs.length) {
+      const row = (label, calc, pl, pi, tp) => totals.push({ label: label, calc: calc == null ? '' : r4(calc), perLine: pl == null ? '' : r4(pl), perInvoice: pi == null ? '' : r4(pi), extra: tp == null ? '' : r4(tp) });
+      row('Invoice count', tpl ? keys.length : null, keys.length || null, invs.length || null, ext.length || null);
+      row('Grand total', tpl ? sum(xs, (x) => x.total) : null, lines.length ? sum(lines, (x) => x.total) : null, invs.length ? sum(invs, (x) => x.grand) : null, ext.length ? sum(ext, (x) => x.tot) : null);
+      row('Total discount', tpl ? sum(xs, (x) => x.disc) : null, lines.length ? sum(lines, (x) => x.disc) : null, invs.length && invs[0].tv != null ? sum(invs, (x) => x.tv) : null, null);
+      row('Net', tpl ? sum(xs, (x) => x.net) : null, lines.length && L.lineNet >= 0 ? sum(lines, (x) => x.net) : null, invs.length ? sum(invs, (x) => x.net) : null, ext.length && ext[0].aft != null ? sum(ext, (x) => x.aft) : null);
+      totals.forEach((x) => { const v = [x.calc, x.perLine, x.perInvoice, x.extra].filter((y) => y !== ''); x.ok = v.length < 2 || (Math.max.apply(null, v) - Math.min.apply(null, v)) <= 0.05; });
+    }
+    const badInv = {}; issues.forEach((x) => { if (x.ref) badInv[x.ref] = 1; });
+    const expected = {}; keys.forEach((k) => { expected[k] = byKey[k].x; });
+    return { invoiceRows: invRows, expected: expected, info: info, issues: issues, totals: totals, notes: notes, counts: { lines: lines.length, invoices: invs.length || keys.length, extraRows: ext.length, badInvoices: Object.keys(badInv).length } };
+  }
+  root.ClaimsReview = { run: run, PROFILES: PROFILES };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/* ===== Mini Excel formula engine (the subset the claim templates use) =====
+   window.XLCalc.Book(sheets)  where sheets = { name: { cells: { 'A1': {v, f}, ... }, maxR, maxC } }
+   book.get(sheetName, 'A1') -> evaluated value. Errors are {err:'#N/A'} objects. */
+(function (root) {
+  const ERR = (e) => ({ err: e });
+  const isErr = (x) => x !== null && typeof x === 'object' && x.err !== undefined;
+  const isArr = (x) => Array.isArray(x);
+  const colNum = (s) => { let n = 0; for (let i = 0; i < s.length; i++) n = n * 26 + s.charCodeAt(i) - 64; return n; };
+  const colName = (n) => { let s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+  const addr = (r, c) => colName(c) + r;
+
+  /* ---------- tokenizer + parser ---------- */
+  const TOK = /\s*(?:(\d+\.?\d*(?:[eE][+-]?\d+)?|\.\d+)|("(?:[^"]|"")*")|((?:'(?:[^']|'')+'|[A-Za-z_][A-Za-z0-9_\.]*)!(?:\$?[A-Z]{1,3}\$?\d+(?::\$?[A-Z]{1,3}\$?\d+)?|\$?[A-Z]{1,3}:\$?[A-Z]{1,3}))|(\$?[A-Z]{1,3}\$?\d+(?::\$?[A-Z]{1,3}\$?\d+)?|\$?[A-Z]{1,3}:\$?[A-Z]{1,3})(?![A-Za-z0-9_(])|([A-Za-z_][A-Za-z0-9_\.]*)(?=\()|(TRUE|FALSE)(?![A-Za-z0-9_(])|(<>|<=|>=|[-+*\/^&=<>(),%:]))/y;
+  function tokenize(f) {
+    const out = []; TOK.lastIndex = 0; let pos = 0;
+    while (pos < f.length) {
+      TOK.lastIndex = pos; const m = TOK.exec(f);
+      if (!m) { if (/^\s*$/.test(f.slice(pos))) break; throw new Error('parse: ' + f.slice(pos, pos + 12)); }
+      pos = TOK.lastIndex;
+      if (m[1] !== undefined) out.push({ t: 'num', v: parseFloat(m[1]) });
+      else if (m[2] !== undefined) out.push({ t: 'str', v: m[2].slice(1, -1).replace(/""/g, '"') });
+      else if (m[3] !== undefined) out.push({ t: 'ref', v: m[3] });
+      else if (m[4] !== undefined) out.push({ t: 'ref', v: m[4] });
+      else if (m[5] !== undefined) out.push({ t: 'fn', v: m[5].toUpperCase() });
+      else if (m[6] !== undefined) out.push({ t: 'bool', v: m[6] === 'TRUE' });
+      else out.push({ t: 'op', v: m[7] });
+    }
+    return out;
+  }
+  function parseRef(txt, curSheet) {
+    let sheet = curSheet, body = txt;
+    const i = txt.lastIndexOf('!');
+    if (i >= 0) { sheet = txt.slice(0, i); if (sheet[0] === "'") sheet = sheet.slice(1, -1).replace(/''/g, "'"); body = txt.slice(i + 1); }
+    const parts = body.replace(/\$/g, '').split(':');
+    const one = (p) => { const m = /^([A-Z]+)(\d*)$/.exec(p); return { c: colNum(m[1]), r: m[2] ? +m[2] : null }; };
+    const a = one(parts[0]), b = parts[1] ? one(parts[1]) : a;
+    return { type: 'ref', sheet: sheet, r1: a.r, c1: a.c, r2: b.r, c2: b.c, single: !parts[1] };
+  }
+  function parse(f, sheet) {
+    const toks = tokenize(f); let p = 0;
+    const peek = () => toks[p], next = () => toks[p++];
+    const isOp = (v) => toks[p] && toks[p].t === 'op' && toks[p].v === v;
+    function cmp() { let l = cat(); while (toks[p] && toks[p].t === 'op' && ['=', '<>', '<', '>', '<=', '>='].indexOf(toks[p].v) >= 0) { const op = next().v; l = { k: 'bin', op: op, a: l, b: cat() }; } return l; }
+    function cat() { let l = add(); while (isOp('&')) { next(); l = { k: 'bin', op: '&', a: l, b: add() }; } return l; }
+    function add() { let l = mul(); while (isOp('+') || isOp('-')) { const op = next().v; l = { k: 'bin', op: op, a: l, b: mul() }; } return l; }
+    function mul() { let l = pow(); while (isOp('*') || isOp('/')) { const op = next().v; l = { k: 'bin', op: op, a: l, b: pow() }; } return l; }
+    function pow() { let l = unary(); while (isOp('^')) { next(); l = { k: 'bin', op: '^', a: l, b: unary() }; } return l; }
+    function unary() { if (isOp('-')) { next(); return { k: 'un', op: '-', a: unary() }; } if (isOp('+')) { next(); return unary(); } return post(); }
+    function post() { let l = prim(); while (isOp('%')) { next(); l = { k: 'bin', op: '/', a: l, b: { k: 'num', v: 100 } }; } return l; }
+    function prim() {
+      const t = next(); if (!t) throw new Error('parse: end');
+      if (t.t === 'num') return { k: 'num', v: t.v };
+      if (t.t === 'str') return { k: 'str', v: t.v };
+      if (t.t === 'bool') return { k: 'bool', v: t.v };
+      if (t.t === 'ref') return { k: 'ref', ref: parseRef(t.v, sheet) };
+      if (t.t === 'fn') {
+        next(); const args = [];
+        if (isOp(')')) { next(); return { k: 'fn', name: t.v, args: args }; }
+        for (;;) { if (isOp(',') || isOp(')')) args.push({ k: 'blank' }); else args.push(cmp()); if (isOp(',')) { next(); continue; } if (isOp(')')) { next(); break; } throw new Error('parse: ,)'); }
+        return { k: 'fn', name: t.v, args: args };
+      }
+      if (t.t === 'op' && t.v === '(') { const e = cmp(); if (!isOp(')')) throw new Error('parse: )'); next(); return e; }
+      throw new Error('parse: unexpected ' + t.v);
+    }
+    const ast = cmp(); if (p < toks.length) throw new Error('parse: trailing'); return ast;
+  }
+
+  /* ---------- value helpers ---------- */
+  const numStr = (n) => { if (Number.isInteger(n)) return String(n); const s = Number(n.toPrecision(15)); return String(s); };
+  const toStr = (v) => v == null ? '' : typeof v === 'boolean' ? (v ? 'TRUE' : 'FALSE') : typeof v === 'number' ? numStr(v) : String(v);
+  function toNum(v) {
+    if (isErr(v)) return v; if (v == null || v === '') return 0; if (typeof v === 'number') return v; if (typeof v === 'boolean') return v ? 1 : 0;
+    const s = String(v).trim(); if (s === '') return ERR('#VALUE!'); const n = Number(s.replace(/,/g, '')); return isFinite(n) ? n : ERR('#VALUE!');
+  }
+  const toBool = (v) => { if (isErr(v)) return v; if (typeof v === 'boolean') return v; if (v == null) return false; if (typeof v === 'number') return v !== 0; const s = String(v).toUpperCase(); if (s === 'TRUE') return true; if (s === 'FALSE') return false; return ERR('#VALUE!'); };
+  const rank = (v) => (v == null ? 0 : typeof v === 'number' ? 1 : typeof v === 'string' ? 2 : 3);
+  function compare(a, b) {
+    if (a == null) a = typeof b === 'string' ? '' : typeof b === 'boolean' ? false : 0;
+    if (b == null) b = typeof a === 'string' ? '' : typeof a === 'boolean' ? false : 0;
+    const ra = typeof a === 'number' ? 1 : typeof a === 'string' ? 2 : 3, rb = typeof b === 'number' ? 1 : typeof b === 'string' ? 2 : 3;
+    if (ra !== rb) return ra < rb ? -1 : 1;
+    if (ra === 2) { const x = a.toLowerCase(), y = b.toLowerCase(); return x < y ? -1 : x > y ? 1 : 0; }
+    return a < b ? -1 : a > b ? 1 : 0;
+  }
+  const roundHalf = (x, d) => { const m = Math.pow(10, d); const y = Math.abs(x) * m; const r = Math.floor(y + 0.5 + 1e-9); return Math.sign(x) * r / m; };
+
+  function Book(sheets) {
+    const self = this; this.unsupported = {};
+    const memo = {}, state = {};
+    const sh = (n) => sheets[n] || sheets[Object.keys(sheets).filter((k) => k.toLowerCase() === String(n).toLowerCase())[0]];
+    const astCache = {};
+    function rawCell(sheet, r, c) { const s = sh(sheet); if (!s) return undefined; return s.cells[addr(r, c)]; }
+    function cellVal(sheet, r, c) {
+      const s = sh(sheet); if (!s) return ERR('#REF!');
+      const key = s.name + '!' + r + ',' + c; if (key in memo) return memo[key];
+      const cell = s.cells[addr(r, c)]; let v;
+      if (!cell) v = null;
+      else if (cell.f) {
+        if (state[key]) return ERR('#REF!'); state[key] = 1;
+        try { let ast = astCache[key]; if (!ast) ast = astCache[key] = parse(cell.f, s.name); v = evalNode(ast, { sheet: s.name, r: r, c: c }); if (isArr(v)) v = v.length ? (isArr(v[0]) ? v[0][0] : v[0]) : null; if (v && v.type === 'ref') v = refScalar(v); }
+        catch (e) { v = ERR('#NAME?'); v.msg = String(e.message || e); }
+        state[key] = 0;
+      } else v = cell.v === undefined ? null : cell.v;
+      memo[key] = v; return v;
+    }
+    function bounds(ref) { const s = sh(ref.sheet); const mr = s ? (s.limitR || s.maxR) : 1; const r1 = ref.r1 == null ? 1 : ref.r1; return { r1: r1, r2: ref.r2 == null ? mr : Math.max(r1, Math.min(ref.r2, s && s.limitR ? s.limitR : ref.r2)), c1: ref.c1, c2: ref.c2 }; }
+    function refScalar(ref) { const b = bounds(ref); return cellVal(ref.sheet, b.r1, b.c1); }
+    function rangeArr(ref) { const b = bounds(ref), out = []; for (let r = b.r1; r <= b.r2; r++) { const row = []; for (let c = b.c1; c <= b.c2; c++) row.push(cellVal(ref.sheet, r, c)); out.push(row); } return out; }
+    function flat(x) { // value | ref | array -> flat list of values (for aggregate fns)
+      if (x && x.type === 'ref') { const b = bounds(x), out = []; for (let r = b.r1; r <= b.r2; r++) for (let c = b.c1; c <= b.c2; c++) out.push(cellVal(x.sheet, r, c)); return out; }
+      if (isArr(x)) { const out = []; x.forEach((row) => (isArr(row) ? row.forEach((v) => out.push(v)) : out.push(row))); return out; }
+      return [x];
+    }
+    const scalar = (x) => { if (x && x.type === 'ref') return refScalar(x); if (isArr(x)) { const f = flat(x); return f[0]; } return x; };
+    const asArr = (x) => (x && x.type === 'ref' ? rangeArr(x) : x);
+    function broadcast(a, b, fn) {
+      a = asArr(a); b = asArr(b);
+      if (!isArr(a) && !isArr(b)) return fn(a, b);
+      const ra = isArr(a) ? a.length : 1, rb = isArr(b) ? b.length : 1, R = Math.max(ra, rb), out = [];
+      for (let i = 0; i < R; i++) {
+        const ar = isArr(a) ? a[ra === 1 ? 0 : i] : a, br = isArr(b) ? b[rb === 1 ? 0 : i] : b;
+        if (isArr(ar) || isArr(br)) { const ca = isArr(ar) ? ar.length : 1, cb = isArr(br) ? br.length : 1, C = Math.max(ca, cb), row = []; for (let j = 0; j < C; j++) row.push(fn(isArr(ar) ? ar[ca === 1 ? 0 : j] : ar, isArr(br) ? br[cb === 1 ? 0 : j] : br)); out.push(row); }
+        else out.push(fn(ar, br));
+      }
+      return out;
+    }
+    function binop(op, x, y) {
+      if (isErr(x)) return x; if (isErr(y)) return y;
+      if (op === '&') return toStr(x) + toStr(y);
+      if (['=', '<>', '<', '>', '<=', '>='].indexOf(op) >= 0) { const c = compare(x, y); return op === '=' ? c === 0 : op === '<>' ? c !== 0 : op === '<' ? c < 0 : op === '>' ? c > 0 : op === '<=' ? c <= 0 : c >= 0; }
+      const a = toNum(x), b = toNum(y); if (isErr(a)) return a; if (isErr(b)) return b;
+      if (op === '+') return a + b; if (op === '-') return a - b; if (op === '*') return a * b;
+      if (op === '/') return b === 0 ? ERR('#DIV/0!') : a / b;
+      if (op === '^') return Math.pow(a, b);
+    }
+    function critMatcher(crit) {
+      crit = scalar(crit);
+      if (typeof crit === 'string') {
+        const m = /^(<>|<=|>=|=|<|>)(.*)$/.exec(crit);
+        let op = '=', rhs = crit; if (m) { op = m[1]; rhs = m[2]; }
+        const n = rhs !== '' && isFinite(Number(rhs)) ? Number(rhs) : null;
+        if (n === null && /[*?]/.test(rhs) && (op === '=' || op === '<>')) { const re = new RegExp('^' + rhs.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$', 'i'); return (v) => (typeof v === 'string' && re.test(v)) === (op === '='); }
+        return (v) => {
+          if (n !== null) { if (typeof v === 'string') { const vn = v.trim() !== '' && isFinite(Number(v)) ? Number(v) : null; if (vn === null) return op === '<>'; v = vn; } if (typeof v !== 'number') return op === '<>'; return op === '=' ? v === n : op === '<>' ? v !== n : op === '<' ? v < n : op === '>' ? v > n : op === '<=' ? v <= n : v >= n; }
+          if (rhs === '' && op === '=') return v == null || v === '';
+          if (rhs === '' && op === '<>') return !(v == null || v === '');
+          if (typeof v !== 'string') return op === '<>' ? true : false;
+          const c = v.toLowerCase() === rhs.toLowerCase(); return op === '=' ? c : op === '<>' ? !c : false;
+        };
+      }
+      if (typeof crit === 'number') return (v) => (typeof v === 'number' ? v === crit : typeof v === 'string' && v.trim() !== '' && Number(v) === crit);
+      if (typeof crit === 'boolean') return (v) => v === crit;
+      if (crit == null) return (v) => v == null || v === '' || v === 0;
+      return () => false;
+    }
+    const sumIfs = (sumR, pairs) => {
+      const sv = flat(sumR), conds = pairs.map((p) => ({ vals: flat(p[0]), m: critMatcher(p[1]) })), n = sv.length; let s = 0;
+      for (let i = 0; i < n; i++) { let ok = true; for (let k = 0; k < conds.length; k++) if (!conds[k].m(conds[k].vals[i])) { ok = false; break; } if (ok) { const x = sv[i]; if (typeof x === 'number') s += x; else if (isErr(x)) return x; } }
+      return s;
+    };
+    const countIfs = (pairs) => { const conds = pairs.map((p) => ({ vals: flat(p[0]), m: critMatcher(p[1]) })), n = conds[0].vals.length; let c = 0; for (let i = 0; i < n; i++) { let ok = true; for (let k = 0; k < conds.length; k++) if (!conds[k].m(conds[k].vals[i])) { ok = false; break; } if (ok) c++; } return c; };
+    const numbersOf = (args, ctx) => { const out = []; for (const a of args) { const x = evalNode(a, ctx); if (x && x.type === 'ref' || isArr(x)) { for (const v of flat(x)) { if (isErr(v)) return v; if (typeof v === 'number') out.push(v); } } else { const v = scalar(x); if (isErr(v)) return v; const n = toNum(v); if (isErr(n)) return n; out.push(n); } } return out; };
+
+    function callFn(name, args, ctx) {
+      const E = (i) => evalNode(args[i], ctx), S = (i) => scalar(E(i));
+      switch (name) {
+        case 'IF': { const c = toBool(S(0)); if (isErr(c)) return c; if (c) return args[1] ? E(1) : true; return args[2] ? E(2) : false; }
+        case 'IFERROR': { const v = scalar(E(0)); return isErr(v) ? E(1) : v; }
+        case 'IFNA': { const v = scalar(E(0)); return isErr(v) && v.err === '#N/A' ? E(1) : v; }
+        case 'AND': { let r = true; for (let i = 0; i < args.length; i++) { for (const v of flat(E(i))) { if (v == null || v === '') continue; const b = toBool(v); if (isErr(b)) return b; if (!b) r = false; } } return r; }
+        case 'OR': { let r = false; for (let i = 0; i < args.length; i++) { for (const v of flat(E(i))) { if (v == null || v === '') continue; const b = toBool(v); if (isErr(b)) return b; if (b) r = true; } } return r; }
+        case 'NOT': { const b = toBool(S(0)); return isErr(b) ? b : !b; }
+        case 'TRUE': return true; case 'FALSE': return false;
+        case 'SUM': { const n = numbersOf(args, ctx); return isErr(n) ? n : n.reduce((a, b) => a + b, 0); }
+        case 'MAX': { const n = numbersOf(args, ctx); return isErr(n) ? n : n.length ? Math.max.apply(null, n) : 0; }
+        case 'MIN': { const n = numbersOf(args, ctx); return isErr(n) ? n : n.length ? Math.min.apply(null, n) : 0; }
+        case 'COUNT': { let c = 0; for (let i = 0; i < args.length; i++) { const x = E(i); if (x && x.type === 'ref' || isArr(x)) flat(x).forEach((v) => { if (typeof v === 'number') c++; }); else if (typeof scalar(x) === 'number') c++; } return c; }
+        case 'COUNTA': { let c = 0; for (let i = 0; i < args.length; i++) flat(E(i)).forEach((v) => { if (v !== null && v !== undefined) c++; }); return c; }
+        case 'ABS': { const n = toNum(S(0)); return isErr(n) ? n : Math.abs(n); }
+        case 'ROUND': { const n = toNum(S(0)), d = toNum(S(1)); return isErr(n) ? n : isErr(d) ? d : roundHalf(n, d); }
+        case 'N': { const v = S(0); return typeof v === 'number' ? v : typeof v === 'boolean' ? (v ? 1 : 0) : 0; }
+        case 'VALUE': { const v = S(0); if (typeof v === 'number') return v; const n = toNum(v); return n; }
+        case 'ISNUMBER': return typeof S(0) === 'number';
+        case 'ISLOGICAL': return typeof S(0) === 'boolean';
+        case 'TRIM': return toStr(S(0)).replace(/\s+/g, ' ').trim();
+        case 'LEFT': { const s = toStr(S(0)), n = args[1] ? toNum(S(1)) : 1; return s.slice(0, n); }
+        case 'MID': { const s = toStr(S(0)), st = toNum(S(1)), n = toNum(S(2)); return s.substr(st - 1, n); }
+        case 'SUBSTITUTE': { const s = toStr(S(0)), a = toStr(S(1)), b = toStr(S(2)); return a === '' ? s : s.split(a).join(b); }
+        case 'SEARCH': { const f = toStr(S(0)).toLowerCase(), w = toStr(S(1)).toLowerCase(), st = args[2] ? toNum(S(2)) : 1; const i = w.indexOf(f, st - 1); return i < 0 ? ERR('#VALUE!') : i + 1; }
+        case 'ROWS': { const x = E(0); if (x && x.type === 'ref') { const b = bounds(x); return b.r2 - b.r1 + 1; } return isArr(x) ? x.length : 1; }
+        case 'ROW': { if (!args.length) return ctx.r; const x = E(0); return x && x.type === 'ref' ? bounds(x).r1 : ctx.r; }
+        case 'COLUMN': { if (!args.length) return ctx.c; const x = E(0); return x && x.type === 'ref' ? x.c1 : ctx.c; }
+        case 'SMALL': { const v = flat(E(0)).filter((x) => typeof x === 'number').sort((a, b) => a - b), k = toNum(S(1)); return k >= 1 && k <= v.length ? v[k - 1] : ERR('#NUM!'); }
+        case 'SUMIFS': { const pairs = []; for (let i = 1; i + 1 < args.length; i += 2) pairs.push([E(i), E(i + 1)]); return sumIfs(E(0), pairs); }
+        case 'SUMIF': { return sumIfs(args[2] ? E(2) : E(0), [[E(0), E(1)]]); }
+        case 'COUNTIF': return countIfs([[E(0), E(1)]]);
+        case 'COUNTIFS': { const pairs = []; for (let i = 0; i + 1 < args.length; i += 2) pairs.push([E(i), E(i + 1)]); return countIfs(pairs); }
+        case 'MATCH': {
+          const look = S(0), arr = flat(E(1)), mt = args[2] ? toNum(S(2)) : 1;
+          if (isErr(look)) return look;
+          if (mt === 0) { const m = critMatcherExact(look); for (let i = 0; i < arr.length; i++) if (m(arr[i])) return i + 1; return ERR('#N/A'); }
+          let best = -1; for (let i = 0; i < arr.length; i++) { const v = arr[i]; if (v == null) continue; const c = compare(v, look); if (mt === 1 ? c <= 0 : c >= 0) best = i; else if (mt === 1 ? c > 0 : c < 0) break; }
+          return best < 0 ? ERR('#N/A') : best + 1;
+        }
+        case 'INDEX': {
+          const x = E(0); const r = args[1] ? toNum(S(1)) : 0, c = args[2] ? toNum(S(2)) : 0; if (isErr(r)) return r; if (isErr(c)) return c;
+          if (x && x.type === 'ref') {
+            const b = bounds(x), h = b.r2 - b.r1 + 1, w = b.c2 - b.c1 + 1; let rr = r, cc = c;
+            if (h === 1 && args.length === 2) { cc = r; rr = 1; } else if (w === 1 && args.length === 2) { cc = 1; }
+            if (rr === 0) rr = 1; if (cc === 0) cc = 1; if (rr < 1 || rr > h || cc < 1 || cc > w) return ERR('#REF!');
+            return cellVal(x.sheet, b.r1 + rr - 1, b.c1 + cc - 1);
+          }
+          const a = asArr(x); if (!isArr(a)) return a; const row = a[Math.max(r, 1) - 1]; return isArr(row) ? row[Math.max(c, 1) - 1] : row;
+        }
+        case 'SUMPRODUCT': {
+          const arrs = args.map((a, i) => flat(E(i))); const n = arrs[0].length; let s = 0;
+          for (let i = 0; i < n; i++) { let p = 1; for (let k = 0; k < arrs.length; k++) { const v = arrs[k][i]; if (isErr(v)) return v; p *= typeof v === 'number' ? v : 0; } s += p; }
+          return s;
+        }
+        default: { self.unsupported[name] = 1; const e = ERR('#NAME?'); e.msg = 'Unsupported function ' + name; return e; }
+      }
+    }
+    function critMatcherExact(look) {
+      if (typeof look === 'string') { const l = look.toLowerCase(); return (v) => typeof v === 'string' && v.toLowerCase() === l; }
+      if (typeof look === 'number') return (v) => typeof v === 'number' && v === look;
+      if (typeof look === 'boolean') return (v) => v === look;
+      return (v) => v == null;
+    }
+    function evalNode(n, ctx) {
+      switch (n.k) {
+        case 'num': case 'str': case 'bool': return n.v;
+        case 'blank': return null;
+        case 'ref': return n.ref.single ? refScalar(n.ref) : n.ref;
+        case 'un': { const x = asArr(evalNode(n.a, ctx)); return broadcast(x, 0, (a) => { if (isErr(a)) return a; const v = toNum(a); return isErr(v) ? v : -v; }); }
+        case 'bin': { const a = evalNode(n.a, ctx), b = evalNode(n.b, ctx); const r = broadcast(a, b, (x, y) => binop(n.op, x, y)); return r; }
+        case 'fn': return callFn(n.name, n.args, ctx);
+      }
+    }
+    // a bare range used as a scalar (e.g. =A1:A1) -> first cell; INDEX's first arg needs the ref, handled in callFn via evalNode
+    this.get = (sheet, a) => { const m = /^([A-Z]+)(\d+)$/.exec(a); return cellVal(sheet, +m[2], colNum(m[1])); };
+    this.getRC = (sheet, r, c) => cellVal(sheet, r, c);
+    this.setValue = (sheet, r, c, v) => { const s = sh(sheet); s.cells[addr(r, c)] = { v: v }; if (r > s.maxR) s.maxR = r; if (c > s.maxC) s.maxC = c; };
+    this.reset = () => { Object.keys(memo).forEach((k) => delete memo[k]); };
+  }
+  root.XLCalc = { Book: Book, colName: colName, colNum: colNum, addr: addr, isErr: isErr };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/* ===== Template-driven review. window.TplReview.compare(tplSheets, userSheets) =====
+   Both arguments: { sheetName: {name, cells:{A1:{v,f}}, maxR, maxC} }.
+   The template is the reference: its Per Line input columns are filled from the user's Per Line (by header name),
+   its own formulas are run, and every formula column is compared by header name with the user's sheet. */
+(function (root) {
+  const XL = root.XLCalc;
+  const norm = (h) => String(h == null ? '' : h).toLowerCase().replace(/[^a-z0-9؀-ۿ]+/g, '');
+  const isBlank = (v) => v == null || v === '';
+  const TOT = /^(total|totals|grand total|المجموع|الاجمالي|الإجمالي|اجمالي)$/i;
+  const SKIP = /^(how ?to ?use|settings|summary|instructions?)$/i;
+
+  function rowsOf(s, r1, r2, c2) { // 2-D array of raw values
+    const out = [];
+    for (let r = r1; r <= r2; r++) { const row = []; for (let c = 1; c <= c2; c++) { const x = s.cells[XL.addr(r, c)]; row.push(x ? (x.f ? x.v : x.v) : undefined); } out.push(row); }
+    return out;
+  }
+  function headerRow(s) { // first row in 1..8 with >=3 text cells
+    for (let r = 1; r <= 8; r++) { let n = 0; for (let c = 1; c <= Math.min(s.maxC, 80); c++) { const x = s.cells[XL.addr(r, c)]; if (x && typeof x.v === 'string' && x.v.trim() !== '' && !(x.f)) n++; else if (x && x.f && typeof x.v === 'string' && x.v.trim() !== '') n++; } if (n >= 3) return r; }
+    return 1;
+  }
+  function headers(s, hr) { // [{c, name, key}] with duplicate suffix
+    const seen = {}, out = [];
+    for (let c = 1; c <= s.maxC; c++) {
+      const x = s.cells[XL.addr(hr, c)]; if (!x || x.v == null || String(x.v).trim() === '') continue;
+      const k = norm(x.v); if (!k) continue; seen[k] = (seen[k] || 0) + 1;
+      out.push({ c: c, name: String(x.v).trim(), key: k + (seen[k] > 1 ? '#' + seen[k] : '') });
+    }
+    return out;
+  }
+  const has = (s, r, c) => { const x = s.cells[XL.addr(r, c)]; return x && (x.f || (x.v != null && x.v !== '')); };
+  const isFormula = (s, hr, c) => { const x = s.cells[XL.addr(hr + 1, c)]; return !!(x && x.f); };
+
+
+  const ALIAS = [['disc', 'discount', 'discnt'], ['coval', 'covalue', 'copayval', 'قيمهالتحمل', 'قيمةالتحمل'], ['net', 'الصافي'], ['grandtotal', 'الاجمالي', 'الإجمالي'], ['totalval', 'اجماليالخصم', 'إجماليالخصم', 'totaldiscount']];
+
+  const CAN = { copay: 'co', co: 'co', payment: 'pay', pay: 'pay', value: 'val', val: 'val', disc: 'discount', discnt: 'discount', discount: 'discount', rebats: 'rebates', rebate: 'rebates', rebates: 'rebates', qty: 'quantity', quantity: 'quantity', sub: 'sub', subtotal: 'subtotal', total: 'total', net: 'net', imp: 'imp', imported: 'imp', loc: 'local', local: 'local', egp: '', the: '', of: '', no: 'number', num: 'number', number: 'number', ref: 'reference', reference: 'reference', inv: 'invoice', invoice: 'invoice', order: 'order', price: 'price', name: 'name', card: 'card', id: 'id' };
+  function toks(name) { return String(name).replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9\u0600-\u06ff]+/).filter(Boolean).map((t) => (t in CAN ? CAN[t] : t)).filter(Boolean); }
+  function tokSim(a, b) { const A = toks(a), B = toks(b); if (!A.length || !B.length) return 0; const sa = {}, sb = {}; A.forEach((t) => { sa[t] = 1; }); B.forEach((t) => { sb[t] = 1; }); let i = 0; Object.keys(sa).forEach((t) => { if (sb[t]) i++; }); return i / (Object.keys(sa).length + Object.keys(sb).length - i); }
+  function ed1(a, b) { if (Math.abs(a.length - b.length) > 1) return false; let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++; if (a.length === b.length) return a.slice(i + 1) === b.slice(i + 1) || a.slice(i) === b.slice(i); return a.length > b.length ? a.slice(i + 1) === b.slice(i) : a.slice(i) === b.slice(i + 1); }
+  function mapHeaders(tH, uH) { // template header key -> user header object
+    const out = {}, used = {};
+    tH.forEach((h) => { const u = uH.filter((x) => x.key === h.key)[0]; if (u) { out[h.key] = u; used[u.key] = 1; } });
+    const rest = (list) => list.filter((x) => !used[x.key]);
+    tH.forEach((h) => {
+      if (out[h.key]) return; const base = h.key.replace(/#\d+$/, '');
+      const g = ALIAS.filter((a) => a.indexOf(base) >= 0)[0];
+      let u = g ? rest(uH).filter((x) => g.indexOf(x.key.replace(/#\d+$/, '')) >= 0)[0] : null;
+      if (!u && base.length >= 6) u = rest(uH).filter((x) => { const b = x.key.replace(/#\d+$/, ""); return b.length >= 6 && ed1(base, b); })[0];
+      if (!u && base.length >= 3) u = rest(uH).filter((x) => { const b = x.key.replace(/#\d+$/, ''), sh = base.length < b.length ? base : b, lg = base.length < b.length ? b : base; return sh.length >= 3 && lg.length - sh.length <= 3 && lg.indexOf(sh) === 0 && /val$/.test(base) === /val$/.test(b); })[0];
+      if (!u && /val$/.test(base) && base.length >= 6) { const root = base.slice(0, -3); u = rest(uH).filter((x) => { const b = x.key.replace(/#\d+$/, ''); return /val$/.test(b) && b.length - 3 >= 3 && (b.slice(0, -3).indexOf(root) === 0 || root.indexOf(b.slice(0, -3)) === 0) && Math.abs(b.length - base.length) <= 3; })[0]; }
+      if (!u) { let best = 0, bu = null, tie = false; rest(uH).forEach((x) => { const sc = tokSim(h.name, x.name); if (sc > best) { best = sc; bu = x; tie = false; } else if (sc === best && sc > 0) tie = true; }); if (best >= 0.6 && !tie) { u = bu; out.__fuzzy = (out.__fuzzy || []).concat([h.name + ' = ' + bu.name]); } }
+      if (u) { out[h.key] = u; used[u.key] = 1; }
+    });
+    return out;
+  }
+  function pickByName(sheets, re, exclude) { return Object.keys(sheets).filter((n) => re.test(n) && !(exclude && exclude.test(n))); }
+  function overlapScore(hA, hB) { const b = {}; hB.forEach((h) => { b[h.key] = 1; }); let n = 0; hA.forEach((h) => { if (b[h.key]) n++; }); return n; }
+
+  function numish(v) { if (typeof v === 'number') return v; if (typeof v === 'string' && v.trim() !== '' && isFinite(Number(v.replace(/,/g, '')))) return Number(v.replace(/,/g, '')); return null; }
+  function same(got, exp) {
+    if (exp && exp.err) return { ok: false, e: exp.err, text: true };
+    const bl = (x) => isBlank(x) || (typeof x === 'string' && /^\(blank\)$/i.test(x.trim()));
+    let g = bl(got) ? '' : got, e = bl(exp) ? '' : exp;
+    const isoMin = (x) => { const m = /^(\d{4}-\d{2}-\d{2})[ t](\d{2}:\d{2})/.exec(String(x).trim().toLowerCase()); return m ? m[1] + ' ' + m[2] : null; };
+    const serial = (n) => { const d = new Date(Math.round((n - 25569) * 86400000)); return isNaN(d) ? null : d.toISOString().slice(0, 16).replace('T', ' '); };
+    if (typeof g === 'number' && g > 30000 && g < 80000 && isoMin(e)) { const sg = serial(g); if (sg) g = sg; }
+    if (typeof e === 'number' && e > 30000 && e < 80000 && isoMin(g)) { const se = serial(e); if (se) e = se; }
+    if (g === '' && e === '') return { ok: true };
+    const gn = numish(g), en = numish(e);
+    if (g === '' && en === 0) return { ok: true }; if (e === '' && gn === 0) return { ok: true };
+    if (gn !== null && en !== null) { const d = Math.abs(gn - en); return { ok: d <= 0.0105, d: d }; }
+    if (typeof g === 'boolean' || typeof e === 'boolean') return { ok: String(g).toUpperCase() === String(e).toUpperCase(), text: true };
+    const ns = (x) => { x = String(x).trim().toLowerCase(); return /^\d{4}-\d{2}-\d{2}[ t]\d{2}:\d{2}:\d{2}/.test(x) ? x.slice(0, 16).replace('t', ' ') : x; };
+    return { ok: ns(g) === ns(e), text: true };
+  }
+  const show = (v) => (v && v.err ? v.err : v);
+
+
+  function kn(v) { // key normaliser: trims, dates -> minute precision
+    if (typeof v === 'number' && v > 30000 && v < 80000 && v % 1 !== 0) { const d = new Date(Math.round((v - 25569) * 86400000)); return d.toISOString().slice(0, 16).replace('T', ' '); }
+    const x = String(v).trim(); const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/.exec(x); return m ? m[1] + ' ' + m[2] : x.toLowerCase();
+  }
+  function pickKey(calc, tName, thr, maxRow, us, uhr, um, cands) {
+    let kb = 0, keyCol = null;
+    const isSeq = (h) => { let n = 0, ok = true; for (let r = thr + 1; r <= maxRow && ok; r++) { const v = calc.getRC(tName, r, h.c); if (isBlank(v)) break; n++; if (v !== n) ok = false; } return ok && n >= 3; };
+    cands.forEach((h) => {
+      if (isSeq(h)) return;
+      const set = {}, dupU = {}; for (let r = uhr + 1; r <= us.maxR; r++) { const x = us.cells[XL.addr(r, um[h.key].c)]; if (x && x.v != null && x.v !== '' && typeof x.v !== 'boolean') { const k = kn(x.v); if (set[k] !== undefined) dupU[k] = 1; else set[k] = r; } }
+      const seen = {}; let ov = 0, str = 0, dupT = 0; for (let r = thr + 1; r <= maxRow; r++) { const v = calc.getRC(tName, r, h.c); if (!isBlank(v) && !(v && v.err)) { const k = kn(v); if (seen[k]) dupT++; seen[k] = 1; if (set[k] !== undefined) { ov++; if (/[a-z\u0600-\u06ff]/i.test(k)) str++; } } }
+      let sc = ov * (str > ov / 2 ? 1.5 : 1); if (dupT || Object.keys(dupU).length) sc *= 0.3;
+      if (sc > kb && Object.keys(set).length >= ov * 0.5) { kb = sc; keyCol = { cols: [h], key: h.key, name: h.name, set: set, dups: dupT + Object.keys(dupU).length }; }
+    });
+    // several columns together (e.g. name + card + date) when no single column identifies the rows well
+    let nT = 0; for (let r = thr + 1; r <= maxRow; r++) { if (!isBlank(calc.getRC(tName, r, cands[0] ? cands[0].c : 1))) nT++; }
+    if (cands.length >= 2 && (!keyCol || kb < nT * 0.9 || keyCol.dups)) {
+      const isStr = (h) => { let n = 0, t = 0; for (let r = thr + 1; r <= maxRow; r++) { const v = calc.getRC(tName, r, h.c); if (isBlank(v)) continue; n++; if (typeof v === 'string') t++; } return n > 0 && t >= n * 0.8; };
+      const cs = cands.filter((h) => !isSeq(h) && isStr(h)).slice(0, 5), uk = (ur) => cs.map((h) => { const x = us.cells[XL.addr(ur, um[h.key].c)]; return x && x.v != null ? kn(x.v) : ''; }).join('|');
+      const set = {}; for (let r = uhr + 1; r <= us.maxR; r++) { const k = uk(r); if (k.replace(/\|/g, '') !== '' && set[k] === undefined) set[k] = r; }
+      let ov = 0; const seen = {}; let dup = 0; for (let r = thr + 1; r <= maxRow; r++) { const k = cs.map((h) => { const v = calc.getRC(tName, r, h.c); return isBlank(v) || (v && v.err) ? '' : kn(v); }).join('|'); if (k.replace(/\|/g, '') === '') continue; if (seen[k]) dup++; seen[k] = 1; if (set[k] !== undefined) ov++; }
+      if (ov > kb * 0.9 && ov >= 3 && dup < ov * 0.1) keyCol = { cols: cs, key: '__multi', name: cs.map((h) => h.name).join(' + '), set: set, multi: true };
+    }
+    if (!keyCol) return null;
+    keyCol.tk = (r) => { const parts = keyCol.cols.map((h) => { const v = calc.getRC(tName, r, h.c); return isBlank(v) || (v && v.err) ? '' : kn(v); }); const k = parts.join('|'); return k.replace(/\|/g, '') === '' ? '' : k; };
+    keyCol.skip = cands.filter((h) => isSeq(h)).map((h) => h.key).concat(keyCol.multi ? [] : [keyCol.key]);
+    return keyCol;
+  }
+  function compare(tpl, usr, opt) {
+    opt = opt || {};
+    const res = { ok: false, sheets: [], issues: [], notes: [], unsupported: {}, counts: { lines: 0, invoices: 0, cells: 0 }, mapped: {} };
+    const tPL = pickByName(tpl, /^per ?line$/i)[0] || pickByName(tpl, /per ?line/i)[0];
+    const tPI = pickByName(tpl, /^per ?invoice$/i)[0] || pickByName(tpl, /per ?invoice/i, /above|below|claim form/i)[0];
+    if (!tPL) { res.notes.push('This template has no Per Line tab, so it could not be run.'); return res; }
+    const T = tpl[tPL], tHr = headerRow(T), tH = headers(T, tHr);
+    const inputs = tH.filter((h) => !isFormula(T, tHr, h.c));
+    // --- find the user's Per Line: the tab whose headers match the template's input headers best
+    let uPL = null, best = 0;
+    Object.keys(usr).forEach((n) => { if (SKIP.test(n)) return; const s = usr[n], hr = headerRow(s), sc = overlapScore(inputs, headers(s, hr)) + (/per ?line/i.test(n) ? 0.5 : 0); if (sc > best) { best = sc; uPL = n; } });
+    if (opt.lineSheet && usr[opt.lineSheet]) uPL = opt.lineSheet;
+    if (!uPL || best < Math.max(3, inputs.length * 0.3)) { res.notes.push('Could not find a Per Line tab in your sheet that matches the template columns.'); return res; }
+    const U = usr[uPL], uHr = headerRow(U), uH = headers(U, uHr), uMap = mapHeaders(tH, uH);
+    // --- build the calculation workbook from the template
+    const mappedIn = inputs.filter((h) => uMap[h.key]);
+    const kIn = mappedIn.filter((h) => /(pos ?ref|order ?(#|no|num|ref)|#order|^so$|invoice|ticket)/i.test(h.name))[0] || mappedIn[0];
+    const nLines = (function () { const kc = kIn ? uMap[kIn.key].c : 1; let last = uHr; for (let r = uHr + 1; r <= U.maxR; r++) { const x = U.cells[XL.addr(r, kc)]; if (x && x.v != null && String(x.v).trim() !== '') last = r; } return last - uHr; })();
+    res.counts.lines = nLines;
+    const book = {};
+    Object.keys(tpl).forEach((n) => { const s = tpl[n]; book[n] = { name: n, cells: {}, maxR: s.maxR, maxC: s.maxC }; });
+    Object.keys(tpl).forEach((n) => { const s = tpl[n], d = book[n].cells; const lim = n === tPL ? nLines + tHr : (n === tPI ? Math.min(s.maxR, nLines + 8) : Infinity); for (const a in s.cells) { const m = /\d+/.exec(a); if (+m[0] > lim && s.cells[a].f) continue; d[a] = s.cells[a]; } });
+    book[tPL].limitR = nLines + tHr;
+    // clear any sample data the template ships with in the input columns, then fill from the user's sheet
+    const TB = book[tPL];
+    inputs.forEach((h) => { for (let r = tHr + 1; r <= TB.maxR; r++) delete TB.cells[XL.addr(r, h.c)]; });
+    const missing = [];
+    inputs.forEach((h) => {
+      const u = uMap[h.key]; if (!u) { missing.push(h.name); return; }
+      for (let r = 1; r <= nLines; r++) { const x = U.cells[XL.addr(uHr + r, u.c)]; if (x && x.v != null && x.v !== '') TB.cells[XL.addr(tHr + r, h.c)] = { v: x.v }; }
+    });
+    // "Is Local" missing but the sheet has its own per-line rebate column: work it out from the rebate (local rate -> local)
+    const locIn = inputs.filter((h) => !uMap[h.key] && /is ?local/i.test(h.name))[0], rebT = tH.filter((h) => /^rebates?$/i.test(h.name) && uMap[h.key])[0];
+    if (locIn && rebT) {
+      let locRate = null; const st = tpl.Settings || tpl.settings;
+      if (st) for (const a in st.cells) { const x = st.cells[a]; if (typeof x.v === 'string' && /local/i.test(x.v) && /rebate/i.test(x.v)) { const m = /^([A-Z]+)(\d+)$/.exec(a); for (let c = XL.colNum(m[1]) + 1; c <= XL.colNum(m[1]) + 3; c++) { const y = st.cells[XL.addr(+m[2], c)]; if (y && typeof y.v === 'number') { locRate = y.v; break; } } if (locRate != null) break; } }
+      if (locRate != null) {
+        for (let r = 1; r <= nLines; r++) { const x = U.cells[XL.addr(uHr + r, uMap[rebT.key].c)]; if (x && typeof x.v === 'number') TB.cells[XL.addr(tHr + r, locIn.c)] = { v: Math.abs(x.v - locRate) < 1e-9 }; }
+        missing.splice(missing.indexOf(locIn.name), 1);
+        res.notes.push('"' + locIn.name + '" is not in your sheet, so it was worked out from your rebate column (' + uMap[rebT.key].name + '): lines at ' + +(locRate * 100).toFixed(2) + '% are local, the others imported.');
+      }
+    }
+    if (uMap.__fuzzy) res.notes.push('Columns matched by similar names: ' + uMap.__fuzzy.join('; ') + '.');
+    res.mapped = { lineSheet: uPL, inputs: inputs.length, missing: missing };
+    if (missing.length) res.notes.push('Template input columns not found in your Per Line (left empty): ' + missing.join(', ') + '.');
+    // --- typed (non-formula) columns of the template's Per Invoice are copied from the user's Per Invoice
+    let uPI = null, typedCopy = null;
+    if (tPI) {
+      const TI = tpl[tPI], iHr = headerRow(TI), iH = headers(TI, iHr);
+      let bs = 0;
+      Object.keys(usr).forEach((n) => { if (n === uPL || SKIP.test(n)) return; const s = usr[n], sc = overlapScore(iH, headers(s, headerRow(s))) + (/per ?invoice/i.test(n) ? 0.5 : 0); if (sc > bs) { bs = sc; uPI = n; } });
+      if (opt.invSheet && usr[opt.invSheet]) uPI = opt.invSheet;
+      if (!uPI || bs < 3) uPI = null;
+      const typed = iH.filter((h) => !isFormula(TI, iHr, h.c));
+      const BI = book[tPI];
+      if (uPI && typed.length) {
+        const UI = usr[uPI], uiHr = headerRow(UI), uiMap = mapHeaders(iH, headers(UI, uiHr));
+        typedCopy = { sheet: tPI, hr: iHr, UI: UI, uiHr: uiHr, uiMap: uiMap, cols: typed.filter((h) => uiMap[h.key]) };
+      }
+      BI.limitR = iHr + Math.min(nLines, 4000);
+    }
+    const calc = new XL.Book(book);
+    if (typedCopy && typedCopy.cols.length) {
+      const TC = typedCopy, ts0 = tpl[TC.sheet], th0 = headers(ts0, TC.hr), cand = th0.filter((h) => isFormula(ts0, TC.hr, h.c) && TC.uiMap[h.key]);
+      const kc = pickKey(calc, TC.sheet, TC.hr, book[TC.sheet].limitR, TC.UI, TC.uiHr, TC.uiMap, cand);
+      if (kc) { for (let r = TC.hr + 1; r <= book[TC.sheet].limitR; r++) { const kv = kc.tk(r); if (kv === '') continue; const ur = kc.set[kv]; if (ur === undefined) continue; TC.cols.forEach((h) => { const x = TC.UI.cells[XL.addr(ur, TC.uiMap[h.key].c)]; if (x && x.v != null && x.v !== '') calc.setValue(TC.sheet, r, h.c, x.v); }); } calc.reset(); }
+    }
+    // --- compare sheet pairs: Per Line, Per Invoice, then other template tabs that have a same-named tab in the user's file
+    const pairs = [{ t: tPL, u: uPL, kind: 'line' }];
+    if (tPI && uPI) pairs.push({ t: tPI, u: uPI, kind: 'inv' });
+    Object.keys(tpl).forEach((n) => {
+      if (n === tPL || n === tPI || SKIP.test(n)) return;
+      const hasF = Object.keys(tpl[n].cells).some((a) => tpl[n].cells[a].f); if (!hasF) return;
+      const m = Object.keys(usr).filter((k) => k !== uPL && k !== uPI && norm(k) === norm(n))[0];
+      if (m) pairs.push({ t: n, u: m, kind: 'extra' });
+    });
+    pairs.forEach((p) => {
+      const ts = tpl[p.t], us = usr[p.u], thr = headerRow(ts), uhr = headerRow(us), th = headers(ts, thr), uh = headers(us, uhr);
+      const um = mapHeaders(th, uh);
+      const shared = th.filter((h) => um[h.key]);
+      const sheetRes = { tpl: p.t, sheet: p.u, kind: p.kind, cols: [], rows: 0, diffs: 0, sharedCols: shared.length, notCompared: th.filter((h) => isFormula(ts, thr, h.c) && !um[h.key] && !/helper/i.test(h.name)).map((h) => h.name) };
+      // rows to evaluate
+      const bk = book[p.t]; const maxRow = p.kind === 'line' ? bk.limitR : p.kind === 'inv' ? (bk.limitR || Math.min(ts.maxR, nLines + 8)) : Math.min(ts.maxR, 3000);
+      // key column (for invoice/extra tabs): shared column with the largest overlap of values
+      let keyCol = null;
+      if (p.kind !== 'line') {
+        keyCol = pickKey(calc, p.t, thr, maxRow, us, uhr, um, shared);
+        if (!keyCol) { res.notes.push('Could not match invoices in "' + p.u + '" to the template "' + p.t + '", so that tab was not compared.'); return; }
+        sheetRes.key = keyCol.name;
+      }
+      const cmpCols = shared.filter((h) => isFormula(ts, thr, h.c) && (!keyCol || (keyCol.skip.indexOf(h.key) < 0 && !(keyCol.multi && keyCol.cols.some((k) => k.key === h.key) && false))));
+      cmpCols.forEach((h) => { sheetRes.cols.push({ name: h.name, n: 0, diffs: 0, rows: [] }); });
+      const aligned = [];
+      for (let r = thr + 1; r <= maxRow; r++) {
+        let ur, ref;
+        if (p.kind === 'line') { ur = uhr + (r - thr); const kx = us.cells[XL.addr(ur, (um[norm('Pos Reference')] || um[norm('Order #')] || um[norm('#Order')] || { c: 1 }).c)]; ref = kx && kx.v != null ? String(kx.v) : ''; }
+        else { const kv = keyCol.tk(r); if (kv === '' || TOT.test(kv)) continue; ref = kv.replace(/\|/g, ' · '); ur = keyCol.set[kv]; if (ur === undefined) { res.issues.push({ sheet: p.u, tpl: p.t, row: '', ref: ref, field: '(invoice)', got: 'not in your sheet', expected: 'in template result', diff: '' }); sheetRes.diffs++; sheetRes.rows++; continue; } }
+        if (p.kind === 'line') { let any = false; for (let c = 1; c <= us.maxC && !any; c++) { const x = us.cells[XL.addr(ur, c)]; if (x && x.v != null && x.v !== '') any = true; } if (!any) continue; }
+        sheetRes.rows++; aligned.push([r, ur, ref]);
+        cmpCols.forEach((h, i) => {
+          const ex = calc.getRC(p.t, r, h.c), x = us.cells[XL.addr(ur, um[h.key].c)], got = x ? x.v : undefined;
+          if (ex && ex.msg) res.unsupported[ex.msg] = 1;
+          const sc = sheetRes.cols[i]; if (!isBlank(ex)) sc.anyExp = true;
+          const s = same(got, ex); sc.n++;
+          if (!s.ok) sc.rows.push({ sheet: p.u, tpl: p.t, row: ur, ref: ref, field: h.name, got: show(got), expected: show(ex), diff: s.d == null ? '' : s.d, kind: s.text ? 'text' : 'amount' });
+        });
+      }
+      // also: invoices that exist in the user's sheet but not in the template result
+      if (p.kind !== 'line' && keyCol) {
+        const tkeys = {}; for (let r = thr + 1; r <= maxRow; r++) { const v = keyCol.tk(r); if (v !== '') tkeys[v] = 1; }
+        Object.keys(keyCol.set).forEach((k) => { if (!tkeys[k] && !TOT.test(k)) { sheetRes.diffs++; res.issues.push({ sheet: p.u, tpl: p.t, row: keyCol.set[k], ref: k, field: '(invoice)', got: 'in your sheet', expected: 'not in template result', diff: '' }); } });
+      }
+      // template formula columns with no same-named column: look for a column in the user's tab holding the same values
+      const usedU = {}; Object.keys(um).forEach((k) => { if (k !== '__fuzzy' && um[k]) usedU[um[k].key] = 1; });
+      th.filter((h) => isFormula(ts, thr, h.c) && !um[h.key] && !/helper/i.test(h.name)).forEach((h) => {
+        const tv = aligned.map((a) => calc.getRC(p.t, a[0], h.c)); const nb = tv.filter((v) => !isBlank(v) && !(v && v.err));
+        if (nb.length < 3 || new Set(nb.map((v) => String(v))).size < 2) return;
+        let best = 0, bu = null;
+        uh.forEach((x) => { if (usedU[x.key]) return; let ok = 0, n = 0; aligned.forEach((a, i) => { if (isBlank(tv[i]) || (tv[i] && tv[i].err)) return; n++; const c = us.cells[XL.addr(a[1], x.c)]; if (same(c ? c.v : undefined, tv[i]).ok) ok++; }); const f = n ? ok / n : 0; if (f > best) { best = f; bu = x; } });
+        if (!bu || best < 0.8) return;
+        usedU[bu.key] = 1; sheetRes.notCompared = sheetRes.notCompared.filter((n) => n !== h.name);
+        sheetRes.matchedByValues = (sheetRes.matchedByValues || []).concat([h.name + ' = ' + bu.name]);
+        const col = { name: h.name + ' (' + bu.name + ')', n: 0, diffs: 0, rows: [], anyExp: true };
+        aligned.forEach((a, i) => { const c = us.cells[XL.addr(a[1], bu.c)], got = c ? c.v : undefined, sm = same(got, tv[i]); col.n++; if (!sm.ok) col.rows.push({ sheet: p.u, tpl: p.t, row: a[1], ref: a[2], field: h.name, got: show(got), expected: show(tv[i]), diff: sm.d == null ? '' : sm.d, kind: sm.text ? 'text' : 'amount' }); });
+        sheetRes.cols.push(col);
+      });
+      sheetRes.cols.forEach((c) => {
+        if (!c.anyExp && c.rows.length) { c.skipped = true; c.note = 'the template leaves this column empty for these rows (it depends on data the template does not get from your sheet), so it was not compared'; return; }
+        c.diffs = c.rows.length; sheetRes.diffs += c.diffs; res.counts.cells += c.n; c.rows.forEach((x) => { res.issues.push(x); });
+        if (!c.rows.length) res.counts.cells += 0;
+      });
+      res.sheets.push(sheetRes);
+    });
+    res.sheets.forEach((sr) => { if (sr.matchedByValues) res.notes.push('Columns matched by their values (different names) in "' + sr.sheet + '": ' + sr.matchedByValues.join('; ') + '.'); });
+    res.ok = res.sheets.length > 0 && res.counts.cells > 0;
+    res.unsupportedFns = calc.unsupported ? Object.keys(calc.unsupported) : [];
+    return res;
+  }
+  root.TplReview = { compare: compare };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/* ===== Review a sheet: page logic ===== */
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const fmt = (v) => (v === '' || v == null ? '' : Number(v).toLocaleString('en-US', { maximumFractionDigits: 4 }));
+  const CR = window.ClaimsReview;
+  const sel = $('ckCo');
+  sel.innerHTML = '<option value="">Company (rates come from its template)</option>' +
+    Object.keys(READY).sort((a, b) => a.localeCompare(b)).map((k) => '<option value="' + esc(k) + '">' + esc(k) + '</option>').join('') +
+    '<option value="__none">Not listed &mdash; calculation checks only</option>';
+  let tplManual = false, last = null, lastTpl = null, lastName = '', lastProfile = null, lastWb = null, lastOpts = {}, onlyDiff = true;
+
+  function ratesFromTemplate(X, wb) {
+    const name = wb.SheetNames.filter((n) => /^settings$/i.test(n))[0];
+    if (!name) return null;
+    const rows = X.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: null });
+    let loc = null, imp = null;
+    rows.forEach((r) => {
+      for (let i = 0; i < r.length; i++) {
+        if (typeof r[i] !== 'string') continue;
+        const lab = r[i].toLowerCase(); let v = null;
+        for (let j = i + 1; j < r.length; j++) { if (typeof r[j] === 'number') { v = r[j]; break; } }
+        if (v == null) continue; if (v > 1) v = v / 100;
+        if (/rebate/.test(lab) && /local/.test(lab) && loc == null) loc = v;
+        else if (/rebate/.test(lab) && /(imp|import)/.test(lab) && imp == null) imp = v;
+      }
+    });
+    return loc == null && imp == null ? null : { loc: loc, imp: imp };
+  }
+  const colLetter = (i) => { let n = i + 1, s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+  const colIndex = (L) => L.split('').reduce((a, c) => a * 26 + c.charCodeAt(0) - 64, 0) - 1;
+  function coBase(X, wb, sheetRe, kinds) {
+    const name = wb.SheetNames.filter((n) => sheetRe.test(n))[0]; if (!name) return null;
+    const ws = wb.Sheets[name], rows = X.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+    const head = (rows[0] || []).map((h) => String(h == null ? '' : h).toLowerCase().replace(/\s+/g, ' ').trim());
+    const ci = head.findIndex((h) => /^co ?val$/.test(h)); if (ci < 0) return null;
+    const cell = ws[colLetter(ci) + '2']; const f = cell && cell.f; if (!f) return null;
+    const refs = f.match(/\$?[A-Z]{1,3}\$?\d+/g) || [];
+    for (let i = 0; i < refs.length; i++) {
+      const h = head[colIndex(refs[i].replace(/[$\d]/g, ''))] || '';
+      for (let k = 0; k < kinds.length; k++) if (kinds[k][0].test(h)) return kinds[k][1];
+    }
+    return null;
+  }
+  function rulesFromTemplate(X, wb) {
+    return {
+      coLine: coBase(X, wb, /^per ?line$/i, [[/^sub ?total$/, 'sub'], [/total delivered|product total/, 'total']]),
+      coInv: coBase(X, wb, /^per ?invoice$/i, [[/^sub ?total$/, 'sub'], [/^grand ?total$/, 'grand']])
+    };
+  }
+  function getProfile(X) {
+    const co = sel.value;
+    if (!co || co === '__none') return Promise.resolve({ name: 'Calculation checks only', localRate: null, impRate: null, note: co ? '' : 'No company picked, so only the calculations were checked (rebate % was not compared).' });
+    let files = (READY[co] && READY[co].files) || [];
+    if (files.length > 1 && !$('ckTpl').hidden) { const pick = files.filter((f) => f.file === $('ckTpl').value); if (pick.length) files = pick; }
+    let chain = Promise.resolve(null);
+    files.forEach((f) => {
+      chain = chain.then((got) => got || fetch(encodeURI(f.file), { cache: 'no-store' }).then((r) => { if (!r.ok) throw 0; return r.arrayBuffer(); })
+        .then((b) => { const tw = X.read(b, { type: 'array' }); const rt = ratesFromTemplate(X, tw); return { rt: rt, rules: rulesFromTemplate(X, tw), file: f.file, label: files.length > 1 ? f.label : '', tw: tw }; }).catch(() => null));
+    });
+    return chain.then((got) => got
+      ? (got.rt
+        ? { name: co + (got.label ? ' - ' + got.label : ''), tplWb: got.tw, localRate: got.rt.loc, impRate: got.rt.imp, coLine: got.rules.coLine, coInv: got.rules.coInv, note: 'Compared with the ' + co + (got.label ? ' (' + got.label + ')' : '') + ' template. Rebate in the template: local ' + (got.rt.loc == null ? '-' : +(got.rt.loc * 100).toFixed(2) + '%') + ', imported ' + (got.rt.imp == null ? '-' : +(got.rt.imp * 100).toFixed(2) + '%') + '.' }
+        : { name: co + (got.label ? ' - ' + got.label : ''), tplWb: got.tw, localRate: null, impRate: null, note: 'Compared with the ' + co + (got.label ? ' (' + got.label + ')' : '') + ' template.' })
+      : { name: co, localRate: null, impRate: null, note: 'Could not open the ' + co + ' template, so only the sheet\'s own calculations were checked.' });
+  }
+
+  function toSheets(X, wb) {
+    const out = {};
+    wb.SheetNames.forEach((n) => {
+      const ws = wb.Sheets[n], cells = {}; let maxR = 0, maxC = 0;
+      Object.keys(ws).forEach((a) => {
+        if (a[0] === '!') return; const c = ws[a]; if (!c) return;
+        const m = /^([A-Z]+)(\d+)$/.exec(a); if (!m) return;
+        const e = {}; if (c.f) e.f = c.f; if (c.t !== 'e' && c.v !== undefined) e.v = c.v;
+        if (e.f === undefined && e.v === undefined) return;
+        cells[a] = e; const r = +m[2], cc = colIndex(m[1]) + 1; if (r > maxR) maxR = r; if (cc > maxC) maxC = cc;
+      });
+      out[n] = { name: n, cells: cells, maxR: maxR, maxC: maxC };
+    });
+    return out;
+  }
+  function runTpl() {
+    lastTpl = null;
+    if (!lastProfile || !lastProfile.tplWb || !window.TplReview) return;
+    try { lastTpl = window.TplReview.compare(toSheets(window.XLSX, lastProfile.tplWb), toSheets(window.XLSX, lastWb), { lineSheet: lastOpts.lineSheet, invSheet: lastOpts.invSheet }); }
+    catch (e) { lastTpl = { ok: false, sheets: [], issues: [], notes: ['The template comparison could not run on this file.'], error: String(e && e.message || e), counts: {}, unsupported: {} }; }
+  }
+  function tplHtml(T) {
+    const bad = T.issues.length, nm = lastProfile ? lastProfile.name : '';
+    let h = '';
+    const cmp = T.sheets.reduce((a, s) => a + s.cols.filter((c) => !c.skipped).length, 0);
+    if (bad === 0) h += '<div class="ck-banner ok">Matches the ' + esc(nm) + ' template &#10003; &nbsp;' + T.counts.lines + ' lines checked and ' + T.counts.cells + ' values compared, no differences.</div>';
+    else h += '<div class="ck-banner bad">' + bad + ' difference' + (bad === 1 ? '' : 's') + ' from the ' + esc(nm) + ' template <span style="font-weight:600;font-size:14px">(' + T.counts.lines + ' lines, ' + T.counts.cells + ' values compared)</span></div>';
+    if (lastProfile && lastProfile.note) h += '<div class="meta">' + esc(lastProfile.note) + ' Every column below was calculated by the template\'s own formulas on the lines of your sheet, then compared with your sheet by column name.</div>';
+    h += '<table class="ck-t" style="margin-top:10px"><thead><tr><th>Template tab</th><th>Your tab</th><th class="n">Rows</th><th class="n">Columns compared</th><th class="n">Differences</th><th></th></tr></thead><tbody>' +
+      T.sheets.map((s) => { const k = s.cols.filter((c) => !c.skipped).length; return '<tr class="' + (s.diffs ? 'bad' : '') + '"><td>' + esc(s.tpl) + '</td><td>' + esc(s.sheet) + '</td><td class="n">' + s.rows + '</td><td class="n">' + k + '</td><td class="n">' + s.diffs + '</td><td>' + (s.diffs ? '&#10007;' : '&#10003;') + '</td></tr>'; }).join('') + '</tbody></table>';
+    T.notes.forEach((n) => { h += '<div class="meta" style="color:#7A4B00">&#9888; ' + esc(n) + '</div>'; });
+    T.sheets.forEach((s) => {
+      if (s.notCompared && s.notCompared.length) h += '<div class="meta">Not compared in "' + esc(s.sheet) + '" (no column with this name in your sheet): ' + esc(s.notCompared.join(', ')) + '.</div>';
+      s.cols.filter((c) => c.skipped).forEach((c) => { h += '<div class="meta">"' + esc(c.name) + '" in "' + esc(s.sheet) + '": ' + esc(c.note) + '.</div>'; });
+    });
+    const un = Object.keys(T.unsupported || {});
+    if (un.length) h += '<div class="meta" style="color:#7A4B00">&#9888; The template uses something this page cannot calculate (' + esc(un.join(', ')) + '), so some values may be wrong.</div>';
+    if (bad) {
+      const by = {}; T.issues.forEach((i) => { const k = i.sheet + ' · ' + i.field; by[k] = (by[k] || 0) + 1; });
+      h += '<h3 style="margin:18px 0 4px;font-size:18px">What is different</h3><div class="ck-chips">' + Object.keys(by).slice(0, 40).map((k) => '<span class="ck-chip"><bdi>' + esc(k) + '</bdi>: ' + by[k] + '</span>').join('') + '</div>';
+      const show = T.issues.slice(0, 300);
+      h += '<div class="ck-wrap"><table class="ck-t" style="margin:0"><thead><tr><th>Tab</th><th class="n">Row</th><th>Invoice</th><th>Column</th><th class="n">In your sheet</th><th class="n">Template result</th><th class="n">Diff</th></tr></thead><tbody>' +
+        show.map((i) => '<tr><td>' + esc(i.sheet) + '</td><td class="n">' + esc(i.row) + '</td><td>' + esc(i.ref) + '</td><td><bdi>' + esc(i.field) + '</bdi></td><td class="n">' + (typeof i.got === 'number' ? nf4(i.got) : esc(i.got)) + '</td><td class="n">' + (typeof i.expected === 'number' ? nf4(i.expected) : esc(i.expected)) + '</td><td class="n">' + (i.diff === '' ? '' : nf4(i.diff)) + '</td></tr>').join('') + '</tbody></table></div>';
+      if (T.issues.length > show.length) h += '<div class="meta" style="margin-top:8px">Showing the first ' + show.length + '. The download has all ' + T.issues.length + '.</div>';
+    }
+    return h;
+  }
+  const nf4 = (v) => (v === '' || v == null ? '' : Number(v).toLocaleString('en-US', { maximumFractionDigits: 3 }));
+
+  function loadLib() {
+    if (window.XLSX) return Promise.resolve();
+    const urls = ['https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'];
+    return urls.reduce((p, u) => p.catch(() => new Promise((res, rej) => { const s = document.createElement('script'); s.src = u; s.onload = res; s.onerror = rej; document.head.appendChild(s); })), Promise.reject()).then(() => { if (!window.XLSX) throw new Error('lib'); });
+  }
+
+  function tabSelect(id, label, current, tabs) {
+    return '<label class="meta" style="display:inline-flex;gap:6px;align-items:center;margin:0 12px 6px 0">' + label + ' <select id="' + id + '" style="min-height:36px;font-size:14px"><option value="">auto</option>' +
+      tabs.map((t) => '<option value="' + esc(t) + '"' + (t === current ? ' selected' : '') + '>' + esc(t) + '</option>').join('') + '</select></label>';
+  }
+  function colSel(group, key, label, head, cur) {
+    return '<label class="meta" style="display:inline-flex;gap:6px;align-items:center;margin:0 12px 6px 0;white-space:nowrap">' + label + ' <select class="ckcol" data-g="' + group + '" data-k="' + key + '" style="min-height:34px;font-size:13px;max-width:190px"><option value="">&mdash; none &mdash;</option>' +
+      head.map((h, i) => h ? '<option value="' + i + '"' + (i === cur ? ' selected' : '') + '>' + colLetter(i) + ' &middot; ' + esc(h) + '</option>' : '').join('') + '</select></label>';
+  }
+  function colsPanel(res) {
+    const I = res.info, ic = I.invCols, lc = I.lineCols; let h = '';
+    if (!I.lineHead && !I.invHead) return '';
+    h += '<details class="ck-tabs" style="margin:6px 0 10px"' + (res.notes.length ? ' open' : '') + '><summary class="meta" style="cursor:pointer;margin:0">Columns used (change them if something is read wrong)</summary><div style="margin-top:8px">';
+    if (I.invHead) h += '<div class="meta" style="margin:4px 0"><b>Per Invoice</b></div>' + colSel('inv', 'key', 'Invoice no.', I.invHead, ic.key) + colSel('inv', 'grand', 'Grand total', I.invHead, ic.grand) + colSel('inv', 'tv', 'Total discount', I.invHead, ic.tv) + colSel('inv', 'co', 'Co val', I.invHead, ic.co) + colSel('inv', 'net', 'Net', I.invHead, ic.net);
+    if (I.lineHead) h += '<div class="meta" style="margin:4px 0"><b>Per Line</b></div>' + colSel('line', 'lineKey', 'Invoice no.', I.lineHead, lc.lineKey) + colSel('line', 'lineTotal', 'Total', I.lineHead, lc.lineTotal) + colSel('line', 'lineDisc', 'Discount', I.lineHead, lc.lineDisc) + colSel('line', 'lineNet', 'Net', I.lineHead, lc.lineNet) + colSel('line', 'lineCoval', 'Co val', I.lineHead, lc.lineCoval);
+    return h + '</div></details>';
+  }
+  function nf(v) { return v === '' || v == null ? '' : Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }); }
+  function render(res) {
+    const c = res.counts, bad = res.issues.length;
+    let h = '';
+    if (!c.lines && !c.invoices) h += '<div class="ck-banner warn">Could not read this sheet</div>';
+    else if (!res.info.perInvoice || !res.info.perLine) h += '<div class="ck-banner warn">Only part of the sheet was checked &mdash; ' + (!res.info.perInvoice ? 'Per Invoice' : 'Per Line') + ' tab not found. Pick it below.</div>';
+    else if (bad === 0) h += '<div class="ck-banner ok">All good &#10003; &nbsp;' + c.lines + ' lines and ' + c.invoices + ' invoices checked, no differences.</div>';
+    else h += '<div class="ck-banner bad">' + bad + ' difference' + (bad === 1 ? '' : 's') + ' found in ' + c.badInvoices + ' invoice' + (c.badInvoices === 1 ? '' : 's') + ' <span style="font-weight:600;font-size:14px">(' + c.lines + ' lines and ' + c.invoices + ' invoices checked)</span></div>';
+    if (lastProfile && lastProfile.note) h += '<div class="meta">' + esc(lastProfile.note) + '</div>';
+    h += '<div class="meta" style="margin-top:6px">Tabs used &mdash; Per Line: <b>' + esc(res.info.perLine || 'not found') + '</b> &middot; Per Invoice: <b>' + esc(res.info.perInvoice || 'not found') + '</b> &middot; Extra: <b>' + esc(res.info.extra || 'none') + '</b></div>';
+    h += '<div class="ck-tabs" style="margin:6px 0 4px">' + tabSelect('ckLT', 'Per Line tab', lastOpts.lineSheet || '', res.info.tabs) + tabSelect('ckIT', 'Per Invoice tab', lastOpts.invSheet || '', res.info.tabs) + '</div>';
+    res.notes.forEach((n) => { h += '<div class="meta" style="color:#7A4B00">&#9888; ' + esc(n) + '</div>'; });
+    h += colsPanel(res);
+    if (res.totals.length) {
+      const T = res.info.mode === 'template';
+      h += '<table class="ck-t"><thead><tr><th>Totals</th>' + (T ? '<th class="n">Template result</th>' : '') + '<th class="n">Sheet Per Line</th><th class="n">Sheet Per Invoice</th><th class="n">Sheet extra tab</th><th></th></tr></thead><tbody>' +
+        res.totals.map((t) => '<tr class="' + (t.ok ? '' : 'bad') + '"><td>' + esc(t.label) + '</td>' + (T ? '<td class="n">' + fmt(t.calc) + '</td>' : '') + '<td class="n">' + fmt(t.perLine) + '</td><td class="n">' + fmt(t.perInvoice) + '</td><td class="n">' + fmt(t.extra) + '</td><td>' + (t.ok ? '&#10003;' : '&#10007;') + '</td></tr>').join('') + '</tbody></table>';
+    }
+    if (res.invoiceRows.length) {
+      const rows = res.invoiceRows, nBad = rows.filter((r) => r.status !== 'OK').length;
+      const T = res.info.mode === 'template';
+      h += '<h3 style="margin:18px 0 4px;font-size:18px">Per Invoice review</h3><div class="meta" style="margin:0 0 8px">Each row compares the Per Invoice in your sheet with what it should be (' + (T ? 'calculated with the template rules from the Per Line lines' : 'the total of that invoice\'s Per Line lines') + '). ' + nBad + ' of ' + rows.length + ' invoices differ.</div>' +
+        '<label class="meta" style="display:flex;gap:8px;align-items:center;margin:0 0 8px"><input type="checkbox" id="ckOnly"' + (onlyDiff ? ' checked' : '') + '> Show only invoices with differences</label>';
+      const show = (onlyDiff ? rows.filter((r) => r.status !== 'OK') : rows).slice(0, 300);
+      h += '<div class="ck-wrap"><table class="ck-t" style="margin:0"><thead><tr><th rowspan="2">Invoice</th><th class="n" rowspan="2">Row</th><th colspan="3" style="text-align:center">In your sheet (Per Invoice)</th><th colspan="3" style="text-align:center">Should be</th><th rowspan="2">Result</th></tr><tr><th class="n">Grand total</th><th class="n">Co val</th><th class="n">Net</th><th class="n">Grand total</th><th class="n">Co val</th><th class="n">Net</th></tr></thead><tbody>' +
+        (show.length ? show.map((r) => {
+          const S = r.sheet || {}, K = r.calc || {}, df = (a, b) => (a != null && b != null && Math.abs(a - b) > 0.02) ? ' style="color:#A02B20;font-weight:800"' : '';
+          return '<tr class="' + (r.status === 'OK' ? '' : 'bad') + '"><td>' + esc(r.key) + '</td><td class="n">' + esc(r.row) + '</td><td class="n"' + df(S.grand, K.grand) + '>' + nf(S.grand) + '</td><td class="n"' + df(S.co, K.co) + '>' + nf(S.co) + '</td><td class="n"' + df(S.net, K.net) + '>' + nf(S.net) + '</td><td class="n">' + nf(K.grand) + '</td><td class="n">' + nf(K.co) + '</td><td class="n">' + nf(K.net) + '</td><td>' + (r.status === 'OK' ? '&#10003; OK' : r.status === 'Differs' ? esc(r.fields.join(', ')) : esc(r.status)) + '</td></tr>';
+        }).join('') : '<tr><td colspan="9" style="padding:14px">No differences in Per Invoice.</td></tr>') + '</tbody></table></div>';
+      if ((onlyDiff ? nBad : rows.length) > show.length) h += '<div class="meta" style="margin-top:8px">Showing the first ' + show.length + '. The download has all of them.</div>';
+    }
+    if (bad) {
+      const by = {}; res.issues.forEach((i) => { by[i.check] = (by[i.check] || 0) + 1; });
+      h += '<h3 style="margin:18px 0 4px;font-size:18px">All differences</h3><div class="ck-chips">' + Object.keys(by).map((k) => '<span class="ck-chip">' + esc(k) + ': ' + by[k] + '</span>').join('') + '</div>';
+      const show = res.issues.slice(0, 300);
+      h += '<div class="ck-wrap"><table class="ck-t" style="margin:0"><thead><tr><th>Check</th><th>Tab</th><th class="n">Row</th><th>Invoice</th><th>Field</th><th class="n">In sheet</th><th class="n">Should be</th><th class="n">Diff</th></tr></thead><tbody>' +
+        show.map((i) => '<tr><td>' + esc(i.check) + '</td><td>' + esc(i.sheet) + '</td><td class="n">' + esc(i.row) + '</td><td>' + esc(i.ref) + '</td><td>' + esc(i.field) + '</td><td class="n">' + fmt(i.got) + '</td><td class="n">' + fmt(i.expected) + '</td><td class="n">' + fmt(i.diff) + '</td></tr>').join('') + '</tbody></table></div>';
+      if (res.issues.length > show.length) h += '<div class="meta" style="margin-top:8px">Showing the first ' + show.length + '. The download has all ' + res.issues.length + '.</div>';
+    }
+    h += '<div class="tools" style="margin-top:14px"><button class="btn solid" id="ckDl" type="button" style="min-height:44px">Download result (Excel)</button></div>';
+    if (lastTpl && lastTpl.ok) {
+      h = tplHtml(lastTpl) + '<div class="tools" style="margin-top:14px"><button class="btn solid" id="ckDlT" type="button" style="min-height:44px">Download result (Excel)</button></div><details class="ck-tabs" style="margin-top:18px"><summary class="meta" style="cursor:pointer;margin:0"><b>Extra check</b> &mdash; rates and totals worked out from the lines' + (bad ? ' (' + bad + ' difference' + (bad === 1 ? '' : 's') + ')' : ' (no differences)') + '</summary><div style="margin-top:8px">' + h + '</div></details>';
+    } else if (lastTpl && lastTpl.notes && lastTpl.notes.length) {
+      h = '<div class="meta" style="color:#7A4B00">&#9888; Comparison with the template did not run: ' + esc(lastTpl.notes[0]) + ' Showing the basic check instead.</div>' + h;
+    }
+    $('ckOut').innerHTML = h;
+    $('ckDl').addEventListener('click', download);
+    if ($('ckDlT')) $('ckDlT').addEventListener('click', download);
+    if ($('ckOnly')) $('ckOnly').addEventListener('change', (e) => { onlyDiff = e.target.checked; render(last); });
+    $('ckLT').addEventListener('change', (e) => { lastOpts.lineSheet = e.target.value || ''; lastOpts.cols = null; analyze(); });
+    $('ckIT').addEventListener('change', (e) => { lastOpts.invSheet = e.target.value || ''; lastOpts.cols = null; analyze(); });
+    Array.prototype.forEach.call(document.querySelectorAll('#ckOut .ckcol'), (el) => el.addEventListener('change', () => {
+      const cols = { inv: {}, line: {} };
+      Array.prototype.forEach.call(document.querySelectorAll('#ckOut .ckcol'), (x) => { cols[x.getAttribute('data-g')][x.getAttribute('data-k')] = x.value === '' ? -1 : +x.value; });
+      lastOpts.cols = cols; analyze();
+    }));
+  }
+  function analyze() { last = CR.run(window.XLSX, lastWb, lastProfile, lastOpts); runTpl(); render(last); }
+
+  function download() {
+    if (!last || !window.XLSX) return;
+    const X = window.XLSX, res = last, wb = X.utils.book_new();
+    const sum = [['Sheet', lastName], ['Company', lastProfile ? lastProfile.name : ''], ['Lines checked', res.counts.lines], ['Invoices checked', res.counts.invoices], ['Differences', res.issues.length], ['Invoices with differences', res.counts.badInvoices], ['Per Line tab', res.info.perLine || ''], ['Per Invoice tab', res.info.perInvoice || ''], ['Extra tab', res.info.extra || '']];
+    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(sum), 'Summary');
+    const tt = [['Totals', 'Template result', 'Sheet Per Line', 'Sheet Per Invoice', 'Sheet extra tab', 'Match']].concat(res.totals.map((t) => [t.label, t.calc, t.perLine, t.perInvoice, t.extra, t.ok ? 'OK' : 'DIFFERENT']));
+    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(tt), 'Totals');
+    const it = [['Check', 'Tab', 'Row', 'Invoice', 'Field', 'In sheet', 'Expected', 'Diff']].concat(res.issues.map((i) => [i.check, i.sheet, i.row, i.ref, i.field, i.got, i.expected, i.diff]));
+    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(it), 'Differences');
+    const iv = [['Invoice', 'Row in Per Invoice', 'Sheet Grand total', 'Sheet Co val', 'Sheet Net', 'Should be Grand total', 'Should be Co val', 'Should be Net', 'Result']].concat(res.invoiceRows.map((r) => { const S = r.sheet || {}, K = r.calc || {}; return [r.key, r.row, S.grand, S.co, S.net, K.grand, K.co, K.net, r.status === 'Differs' ? r.fields.join(', ') : r.status]; }));
+    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(iv), 'Invoices');
+    if (lastTpl && lastTpl.ok) {
+      const tc = [['Tab (template)', 'Tab (your sheet)', 'Row', 'Invoice', 'Column', 'In your sheet', 'Template result', 'Diff']].concat(lastTpl.issues.map((i) => [i.tpl, i.sheet, i.row, i.ref, i.field, i.got, i.expected, i.diff]));
+      X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(tc), 'Template comparison');
+    }
+    X.writeFile(wb, 'review-' + lastName.replace(/\.[^.]+$/, '') + '.xlsx');
+  }
+
+  function go(file) {
+    if (!file) return;
+    lastName = file.name; $('ckName').textContent = file.name;
+    const tsel = $('ckTpl');
+    if (!tsel.hidden && !tplManual) { // several templates for this company: pick the one named in the file name (Walk In, Chronic, VPN ...)
+      const fn = file.name.toLowerCase().replace(/[^a-z]/g, ''); let best = null, bl = 0;
+      Array.prototype.forEach.call(tsel.options, (o) => { const lab = (o.textContent || '').toLowerCase().replace(/[^a-z]/g, ''); if (lab.length >= 3 && fn.indexOf(lab) >= 0 && lab.length > bl) { best = o.value; bl = lab.length; } });
+      if (best) tsel.value = best;
+    }
+    $('ckOut').innerHTML = '<div class="emptyh">Checking…</div>';
+    loadLib().then(() => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsArrayBuffer(file); }))
+      .then((buf) => getProfile(window.XLSX).then((prof) => { lastProfile = prof; lastWb = window.XLSX.read(buf, { type: 'array' }); lastOpts = {}; return new Promise((res) => setTimeout(res, 30)).then(analyze); }))
+      .catch(() => { $('ckOut').innerHTML = '<div class="ck-banner warn">Could not open this file. Check that it is an Excel file and that you are online, then try again.</div>'; });
+  }
+  $('ckFile').addEventListener('change', (e) => { go(e.target.files[0]); });
+  function fillTpl() {
+    const t = $('ckTpl'), files = (sel.value && READY[sel.value] && READY[sel.value].files) || [];
+    if (files.length > 1) { t.innerHTML = files.map((f) => '<option value="' + esc(f.file) + '">' + esc(f.label || f.full) + '</option>').join(''); t.hidden = false; }
+    else { t.innerHTML = ''; t.hidden = true; }
+  }
+  sel.addEventListener('change', () => { tplManual = false; fillTpl(); const f = $('ckFile').files[0]; if (f) go(f); });
+  $('ckTpl').addEventListener('change', () => { tplManual = true; const f = $('ckFile').files[0]; if (f) go(f); });
 })();
 </script>
 </body>
