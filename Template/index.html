@@ -412,15 +412,13 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
   return `<div class="tile${c.wide ? ' wide' : ''}" style="background:${p.bg};color:${p.fg}"><div class="big" aria-hidden="true" style="color:${p.big}">${esc((c.short || c.name).replace(/^El\s+/, '').charAt(0))}</div><div class="in"><div class="tag" style="color:${p.tag}">${esc(c.tag || '')}</div><h3>${esc(c.short || c.name)}</h3><p style="color:${p.sub}">${esc(c.desc)}</p></div>${actions}</div>`;
 }).join('');
 
-/* ================= Review log (shared through GitHub) ================= */
+/* ================= Review log (shared through Google Apps Script) ================= */
 (function () {
-  const CFG = { owner: 'ntarek72-ai', repo: 'Admins-Dashboard', path: 'data/review-log.json' };
-  const API = 'https://api.github.com/repos/' + CFG.owner + '/' + CFG.repo + '/contents/' + CFG.path;
+  /* Paste the Apps Script web-app link between the quotes. Leave as is = view only. */
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwIugHWsyeT29BmSuR8r0wv-xR4CmBZCnhrygmANL23OM6KaX0BSoLMwK1w2Egdopbbag/exec';
+  const tok = () => (SCRIPT_URL.indexOf('PASTE') === 0 ? '' : SCRIPT_URL);
   const lsGet = (k) => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
   const lsSet = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) {} };
-  /* Paste the GitHub access key between the quotes (see instructions). Leave as is = view only. */
-  const ACCESS_KEY = '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';
-  const tok = () => (ACCESS_KEY.indexOf('PASTE') === 0 ? '' : ACCESS_KEY);
   const who = () => lsGet('claimsReviewer');
   const clone = (o) => JSON.parse(JSON.stringify(o));
 
@@ -437,34 +435,26 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
     });
     return d;
   }
-  const b64 = (str) => { let bin = ''; new TextEncoder().encode(str).forEach((b) => { bin += String.fromCharCode(b); }); return btoa(bin); };
-  const hdrs = () => { const h = { Accept: 'application/vnd.github+json' }; if (tok()) h.Authorization = 'Bearer ' + tok(); return h; };
-
   async function getRemote() {
-    const r = await fetch(API + '?t=' + Date.now(), { headers: hdrs(), cache: 'no-store' });
-    if (r.status === 404 && !tok()) {
-      try { const p = await fetch('../' + CFG.path + '?t=' + Date.now(), { cache: 'no-store' }); if (p.ok) return { data: (await p.json()) || {}, sha: null }; } catch (e) {}
-      return { data: {}, sha: null };
-    }
-    if (r.status === 404) return { data: {}, sha: null };
+    if (!tok()) return { data: {} };
+    const r = await fetch(SCRIPT_URL + (SCRIPT_URL.indexOf('?') < 0 ? '?' : '&') + 't=' + Date.now(), { cache: 'no-store' });
     if (!r.ok) throw { status: r.status };
-    const j = await r.json();
-    const txt = new TextDecoder().decode(Uint8Array.from(atob(j.content.replace(/\n/g, '')), (c) => c.charCodeAt(0)));
-    let d = {}; try { d = JSON.parse(txt) || {}; } catch (e) { d = {}; }
-    return { data: d, sha: j.sha };
+    const d = await r.json();
+    if (!d || typeof d !== 'object' || Array.isArray(d) || d.error) throw { status: 500 };
+    return { data: d };
   }
-  async function putRemote(data, sha) {
-    const body = { message: 'Update review log', content: b64(JSON.stringify(data, null, 1)) };
-    if (sha) body.sha = sha;
-    const r = await fetch(API, { method: 'PUT', headers: Object.assign({ 'Content-Type': 'application/json' }, hdrs()), body: JSON.stringify(body) });
+  async function postOps(ops) {
+    const r = await fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(ops) });
     if (!r.ok) throw { status: r.status };
-    return (await r.json()).content.sha;
+    const d = await r.json();
+    if (!d || typeof d !== 'object' || Array.isArray(d) || d.error) throw { status: 500 };
+    return d;
   }
 
   const $ = (id) => document.getElementById(id);
   function setStatus(txt, cls) { const e = $('syncSt'); e.textContent = txt; e.className = 'sync ' + (cls || ''); }
   function stateLine() {
-    if (!tok()) return setStatus('View only · access key not set', 'warn');
+    if (!tok()) return setStatus('Not connected · view only', 'warn');
     if (pending.length) return setStatus('Saving…', 'warn');
     setStatus('Synced', 'ok');
   }
@@ -472,7 +462,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
 
   async function loadRemote(quiet) {
     try { remote = await getRemote(); rebuild(); stateLine(); }
-    catch (e) { if (!quiet) setStatus(e.status === 401 || e.status === 403 ? 'Key rejected · reconnect' : 'Offline · showing last saved', 'bad'); }
+    catch (e) { if (!quiet) setStatus('Offline · showing last saved', 'bad'); }
   }
   let flushing = false, again = false, timer = null;
   function scheduleFlush() { clearTimeout(timer); timer = setTimeout(flush, 700); }
@@ -482,24 +472,17 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
     flushing = true; setStatus('Saving…', 'warn');
     const ops = pending.slice(); let fatal = false;
     try {
-      for (let a = 0; a < 4; a++) {
-        const rem = await getRemote();
-        const merged = applyOps(clone(rem.data), ops);
-        try {
-          const sha = await putRemote(merged, rem.sha);
-          remote = { data: merged, sha }; pending = pending.filter((o) => ops.indexOf(o) < 0); rebuild(); stateLine(); break;
-        } catch (e) { if ((e.status === 409 || e.status === 422) && a < 3) continue; throw e; }
-      }
+      const merged = await postOps(ops);
+      remote = { data: merged }; pending = pending.filter((o) => ops.indexOf(o) < 0); rebuild(); stateLine();
     } catch (e) {
-      if (e.status === 401 || e.status === 403) { fatal = true; setStatus('Key rejected · reconnect', 'bad'); }
-      else setStatus('Could not save · will retry', 'bad');
+      setStatus('Could not save · will retry', 'bad');
     }
     flushing = false;
     if (pending.length && !fatal) setTimeout(flush, again ? 700 : 15000);
     again = false;
   }
   function addOp(op) {
-    if (!tok()) { setStatus('View only · access key not set', 'warn'); return false; }
+    if (!tok()) { setStatus('Not connected · view only', 'warn'); return false; }
     pending = pending.filter((o) => !(o.k === op.k && o.n === op.n)); pending.push(op);
     rebuild(); stateLine(); scheduleFlush(); return true;
   }
@@ -655,7 +638,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'review-log-' + ymd(new Date()) + '.json';
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); $('bkMsg').textContent = 'Backup downloaded.';
   });
-  $('imp').addEventListener('click', () => { if (!tok()) { $('bkMsg').textContent = 'Access key not set.'; return; } $('impFile').click(); });
+  $('imp').addEventListener('click', () => { if (!tok()) { $('bkMsg').textContent = 'Not connected.'; return; } $('impFile').click(); });
   $('impFile').addEventListener('change', (e) => {
     const f = e.target.files[0]; if (!f) return;
     const r = new FileReader();
