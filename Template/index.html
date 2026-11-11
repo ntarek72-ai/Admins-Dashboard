@@ -419,7 +419,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
   const lsGet = (k) => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
   const lsSet = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) {} };
   /* Paste the GitHub access key between the quotes (see instructions). Leave as is = view only. */
-  const ACCESS_KEY = 'PASTE_YOUR_KEY_HERE';
+  const ACCESS_KEY = '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';
   const tok = () => (ACCESS_KEY.indexOf('PASTE') === 0 ? '' : ACCESS_KEY);
   const who = () => lsGet('claimsReviewer');
   const clone = (o) => JSON.parse(JSON.stringify(o));
