@@ -195,16 +195,11 @@ select:focus-visible,.btn:focus-visible{outline:3px solid #14181F;outline-offset
       <div class="backup">
         <span class="sync" id="syncSt">Loading…</span>
         <button class="btn ghost" id="refresh" type="button">Refresh</button>
-        <button class="btn ghost" id="connBtn" type="button">Connect to edit</button>
-        <label class="lbl">Your name <input type="text" id="who" placeholder="optional" maxlength="30" style="min-height:38px;padding:0 12px;border:1.5px solid #C3C9CF;border-radius:12px;font:600 13px 'Manrope',system-ui,sans-serif;width:130px"></label>
+                <label class="lbl">Your name <input type="text" id="who" placeholder="optional" maxlength="30" style="min-height:38px;padding:0 12px;border:1.5px solid #C3C9CF;border-radius:12px;font:600 13px 'Manrope',system-ui,sans-serif;width:130px"></label>
         <button class="btn ghost" id="exp" type="button">Export backup</button>
         <button class="btn ghost" id="imp" type="button">Import backup</button>
         <input type="file" id="impFile" accept="application/json,.json" hidden>
         <span id="bkMsg"></span>
-      </div>
-      <div class="conn" id="connBox" hidden>
-        <div class="meta" style="margin:0">Paste the access key once on this device. It stays in this browser only and is never saved in the page.</div>
-        <div class="tools" style="margin:0"><input type="password" id="tokIn" placeholder="GitHub access key" autocomplete="off" style="flex:1 1 260px;min-width:0"><button class="btn solid" id="tokSave" type="button" style="min-height:44px">Save key</button><button class="btn ghost" id="tokClear" type="button" style="min-height:44px">Disconnect</button></div>
       </div>
     </div>
   </section>
@@ -423,7 +418,9 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
   const API = 'https://api.github.com/repos/' + CFG.owner + '/' + CFG.repo + '/contents/' + CFG.path;
   const lsGet = (k) => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
   const lsSet = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) {} };
-  const tok = () => lsGet('claimsReviewKey');
+  /* Paste the GitHub access key between the quotes (see instructions). Leave as is = view only. */
+  const ACCESS_KEY = 'PASTE_YOUR_KEY_HERE';
+  const tok = () => (ACCESS_KEY.indexOf('PASTE') === 0 ? '' : ACCESS_KEY);
   const who = () => lsGet('claimsReviewer');
   const clone = (o) => JSON.parse(JSON.stringify(o));
 
@@ -467,7 +464,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
   const $ = (id) => document.getElementById(id);
   function setStatus(txt, cls) { const e = $('syncSt'); e.textContent = txt; e.className = 'sync ' + (cls || ''); }
   function stateLine() {
-    if (!tok()) return setStatus('View only · press Connect to edit', 'warn');
+    if (!tok()) return setStatus('View only · access key not set', 'warn');
     if (pending.length) return setStatus('Saving…', 'warn');
     setStatus('Synced', 'ok');
   }
@@ -502,7 +499,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
     again = false;
   }
   function addOp(op) {
-    if (!tok()) { setStatus('View only · press Connect to edit', 'warn'); return false; }
+    if (!tok()) { setStatus('View only · access key not set', 'warn'); return false; }
     pending = pending.filter((o) => !(o.k === op.k && o.n === op.n)); pending.push(op);
     rebuild(); stateLine(); scheduleFlush(); return true;
   }
@@ -652,17 +649,13 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
   $('who').value = who();
   $('who').addEventListener('input', () => lsSet('claimsReviewer', $('who').value.trim()));
   $('refresh').addEventListener('click', () => { if (pending.length) flush(); else loadRemote(); });
-  $('connBtn').addEventListener('click', () => { $('connBox').hidden = !$('connBox').hidden; });
-  $('tokSave').addEventListener('click', () => { const v = $('tokIn').value.trim(); if (!v) return; lsSet('claimsReviewKey', v); $('tokIn').value = ''; $('connBox').hidden = true; $('connBtn').textContent = 'Connected'; stateLine(); renderAll(); loadRemote(); });
-  $('tokClear').addEventListener('click', () => { lsSet('claimsReviewKey', ''); $('connBtn').textContent = 'Connect to edit'; $('connBox').hidden = true; stateLine(); renderAll(); });
-  if (tok()) $('connBtn').textContent = 'Connected';
 
   $('exp').addEventListener('click', () => {
     const blob = new Blob([JSON.stringify(log, null, 2)], { type: 'application/json' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'review-log-' + ymd(new Date()) + '.json';
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); $('bkMsg').textContent = 'Backup downloaded.';
   });
-  $('imp').addEventListener('click', () => { if (!tok()) { $('bkMsg').textContent = 'Connect first to import.'; return; } $('impFile').click(); });
+  $('imp').addEventListener('click', () => { if (!tok()) { $('bkMsg').textContent = 'Access key not set.'; return; } $('impFile').click(); });
   $('impFile').addEventListener('change', (e) => {
     const f = e.target.files[0]; if (!f) return;
     const r = new FileReader();
