@@ -1251,7 +1251,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
   }
   function compare(tpl, usr, opt) {
     opt = opt || {};
-    const res = { ok: false, sheets: [], issues: [], notes: [], unsupported: {}, counts: { lines: 0, invoices: 0, cells: 0 }, mapped: {} };
+    const res = { ok: false, sheets: [], issues: [], notes: [], info: [], unsupported: {}, counts: { lines: 0, invoices: 0, cells: 0 }, mapped: {} };
     const tPL = pickByName(tpl, /^per ?line$/i)[0] || pickByName(tpl, /per ?line/i)[0];
     const tPI = pickByName(tpl, /^per ?invoice$/i)[0] || pickByName(tpl, /per ?invoice/i, /above|below|claim form/i)[0];
     if (!tPL) { res.notes.push('This template has no Per Line tab, so it could not be run.'); return res; }
@@ -1288,12 +1288,12 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
       if (locRate != null) {
         for (let r = 1; r <= nLines; r++) { const x = U.cells[XL.addr(uHr + r, uMap[rebT.key].c)]; if (x && typeof x.v === 'number') TB.cells[XL.addr(tHr + r, locIn.c)] = { v: Math.abs(x.v - locRate) < 1e-9 }; }
         missing.splice(missing.indexOf(locIn.name), 1);
-        res.notes.push('"' + locIn.name + '" is not in your sheet, so it was worked out from your rebate column (' + uMap[rebT.key].name + '): lines at ' + +(locRate * 100).toFixed(2) + '% are local, the others imported.');
+        res.info.push('"' + locIn.name + '" is not in your sheet, so it was worked out from your rebate column (' + uMap[rebT.key].name + '): lines at ' + +(locRate * 100).toFixed(2) + '% are local, the others imported.');
       }
     }
-    if (uMap.__fuzzy) res.notes.push('Columns matched by similar names: ' + uMap.__fuzzy.join('; ') + '.');
+    if (uMap.__fuzzy) res.info.push('Columns matched by similar names: ' + uMap.__fuzzy.join('; ') + '.');
     res.mapped = { lineSheet: uPL, inputs: inputs.length, missing: missing };
-    if (missing.length) res.notes.push('Template input columns not found in your Per Line (left empty): ' + missing.join(', ') + '.');
+    if (missing.length) res.info.push('Template input columns not found in your Per Line (left empty): ' + missing.join(', ') + '.');
     // --- typed (non-formula) columns of the template's Per Invoice are copied from the user's Per Invoice
     let uPI = null, typedCopy = null;
     if (tPI) {
@@ -1382,7 +1382,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
       });
       res.sheets.push(sheetRes);
     });
-    res.sheets.forEach((sr) => { if (sr.matchedByValues) res.notes.push('Columns matched by their values (different names) in "' + sr.sheet + '": ' + sr.matchedByValues.join('; ') + '.'); });
+    res.sheets.forEach((sr) => { if (sr.matchedByValues) res.info.push('Columns matched by their values (different names) in "' + sr.sheet + '": ' + sr.matchedByValues.join('; ') + '.'); });
     res.filled = book; res.calc = calc; res.sheetOrder = Object.keys(tpl);
     res.ok = res.sheets.length > 0 && res.counts.cells > 0;
     if (!res.ok) res.notes.push('Nothing could be compared: ' + (res.sheets.length ? res.sheets.length + ' tab(s) matched but no column had the same name or values' : 'no tab of your sheet matched a template tab') + '. Template tabs: ' + Object.keys(tpl).join(', ') + '. Your tabs: ' + Object.keys(usr).join(', ') + '.');
@@ -1602,10 +1602,12 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
     h += '<table class="ck-t" style="margin-top:10px"><thead><tr><th>Template tab</th><th>Your tab</th><th class="n">Rows</th><th class="n">Columns compared</th><th class="n">Differences</th><th></th></tr></thead><tbody>' +
       T.sheets.map((s) => { const k = s.cols.filter((c) => !c.skipped).length; return '<tr class="' + (s.diffs ? 'bad' : '') + '"><td>' + esc(s.tpl) + '</td><td>' + esc(s.sheet) + '</td><td class="n">' + s.rows + '</td><td class="n">' + k + '</td><td class="n">' + s.diffs + '</td><td>' + (s.diffs ? '&#10007;' : '&#10003;') + '</td></tr>'; }).join('') + '</tbody></table>';
     T.notes.forEach((n) => { h += '<div class="meta" style="color:#7A4B00">&#9888; ' + esc(n) + '</div>'; });
+    let info = (T.info || []).slice();
     T.sheets.forEach((s) => {
-      if (s.notCompared && s.notCompared.length) h += '<div class="meta">Not compared in "' + esc(s.sheet) + '" (no column with this name in your sheet): ' + esc(s.notCompared.join(', ')) + '.</div>';
-      s.cols.filter((c) => c.skipped).forEach((c) => { h += '<div class="meta">"' + esc(c.name) + '" in "' + esc(s.sheet) + '": ' + esc(c.note) + '.</div>'; });
+      if (s.notCompared && s.notCompared.length) info.push('Not compared in "' + s.sheet + '" (no column with this name in your sheet): ' + s.notCompared.join(', ') + '.');
+      s.cols.filter((c) => c.skipped).forEach((c) => { info.push('"' + c.name + '" in "' + s.sheet + '": ' + c.note + '.'); });
     });
+    if (info.length) h += '<details class="ck-tabs" style="margin:8px 0"><summary class="meta" style="cursor:pointer;margin:0">How the columns were matched</summary>' + info.map((n) => '<div class="meta">' + esc(n) + '</div>').join('') + '</details>';
     const un = Object.keys(T.unsupported || {});
     if (un.length) h += '<div class="meta" style="color:#7A4B00">&#9888; The template uses something this page cannot calculate (' + esc(un.join(', ')) + '), so some values may be wrong.</div>';
     if (bad) {
