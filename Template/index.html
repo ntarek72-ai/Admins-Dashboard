@@ -98,6 +98,15 @@ select:focus-visible,.btn:focus-visible{outline:3px solid #14181F;outline-offset
 .backup{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:13px;color:#5B6671;border-top:1px solid #E4E8EB;padding-top:16px}
 .backup .btn{min-height:38px;padding:0 16px;font-size:13px}
 .emptyh{padding:18px;font-size:15px;color:#5B6671}
+.lbl{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#4B5560}
+.lbl input[type=date]{min-height:44px}
+.sync{font-size:13px;font-weight:700;padding:6px 12px;border-radius:999px;background:#E9ECEF;color:#4B5560}
+.sync.ok{background:#DDF3E8;color:#0E6B4F}.sync.warn{background:#FFF1D6;color:#7A4B00}.sync.bad{background:#FBE1DE;color:#A02B20}
+.conn{display:flex;flex-direction:column;gap:10px;background:#F4F4F1;border-radius:16px;padding:16px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;flex:2 1 240px}
+.chip2{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:#DDF3E8;color:#0E6B4F;white-space:nowrap}
+.cnt{font-size:12px;font-weight:700;color:#5B6671;white-space:nowrap}
+.dayp input:disabled{cursor:not-allowed}
 </style>
 </head>
 <body>
@@ -137,6 +146,7 @@ select:focus-visible,.btn:focus-visible{outline:3px solid #14181F;outline-offset
       <div class="tabs" role="tablist">
         <button class="tab on" id="tabDay" type="button">By day</button>
         <button class="tab" id="tabCo" type="button">By company</button>
+        <button class="tab" id="tabRv" type="button">Reviewed list</button>
       </div>
       <div id="viewDay" class="logbody">
         <div class="cal">
@@ -166,12 +176,35 @@ select:focus-visible,.btn:focus-visible{outline:3px solid #14181F;outline-offset
           <div class="list" id="coList"></div>
         </div>
       </div>
+      <div id="viewRv" hidden>
+        <div class="tools">
+          <label class="lbl">From <input type="date" id="rvFrom"></label>
+          <label class="lbl">To <input type="date" id="rvTo"></label>
+          <button class="btn ghost" id="rvMonth" type="button" style="min-height:44px">This month</button>
+          <button class="btn ghost" id="rvAll" type="button" style="min-height:44px">All time</button>
+        </div>
+        <div class="tools">
+          <input type="search" id="rvQ" placeholder="Search a company" aria-label="Search a company">
+          <select id="rvType" aria-label="Filter by type"><option value="">All types</option><option value="Chronic">Chronic</option><option value="Walk In">Walk In</option><option value="VPN">VPN</option><option value="Other">Other</option></select>
+          <button class="btn solid" id="rvCopy" type="button" style="min-height:44px">Copy list</button>
+          <button class="btn ghost" id="rvCsv" type="button" style="min-height:44px">Download CSV</button>
+        </div>
+        <div class="meta" id="rvMeta"></div>
+        <div class="list" id="rvList"></div>
+      </div>
       <div class="backup">
-        <span>Saved in this browser only.</span>
+        <span class="sync" id="syncSt">Loading…</span>
+        <button class="btn ghost" id="refresh" type="button">Refresh</button>
+        <button class="btn ghost" id="connBtn" type="button">Connect to edit</button>
+        <label class="lbl">Your name <input type="text" id="who" placeholder="optional" maxlength="30" style="min-height:38px;padding:0 12px;border:1.5px solid #C3C9CF;border-radius:12px;font:600 13px 'Manrope',system-ui,sans-serif;width:130px"></label>
         <button class="btn ghost" id="exp" type="button">Export backup</button>
         <button class="btn ghost" id="imp" type="button">Import backup</button>
         <input type="file" id="impFile" accept="application/json,.json" hidden>
         <span id="bkMsg"></span>
+      </div>
+      <div class="conn" id="connBox" hidden>
+        <div class="meta" style="margin:0">Paste the access key once on this device. It stays in this browser only and is never saved in the page.</div>
+        <div class="tools" style="margin:0"><input type="password" id="tokIn" placeholder="GitHub access key" autocomplete="off" style="flex:1 1 260px;min-width:0"><button class="btn solid" id="tokSave" type="button" style="min-height:44px">Save key</button><button class="btn ghost" id="tokClear" type="button" style="min-height:44px">Disconnect</button></div>
       </div>
     </div>
   </section>
@@ -384,13 +417,96 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
   return `<div class="tile${c.wide ? ' wide' : ''}" style="background:${p.bg};color:${p.fg}"><div class="big" aria-hidden="true" style="color:${p.big}">${esc((c.short || c.name).replace(/^El\s+/, '').charAt(0))}</div><div class="in"><div class="tag" style="color:${p.tag}">${esc(c.tag || '')}</div><h3>${esc(c.short || c.name)}</h3><p style="color:${p.sub}">${esc(c.desc)}</p></div>${actions}</div>`;
 }).join('');
 
-/* ================= Review log ================= */
+/* ================= Review log (shared through GitHub) ================= */
 (function () {
-  const KEY = 'claimsReviewLog.v1';
-  let mem = {};
-  function load() { try { const r = localStorage.getItem(KEY); return r ? JSON.parse(r) : {}; } catch (e) { return mem; } }
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(log)); } catch (e) { mem = log; } }
-  let log = load();
+  const CFG = { owner: 'ntarek72-ai', repo: 'Admins-Dashboard', path: 'data/review-log.json' };
+  const API = 'https://api.github.com/repos/' + CFG.owner + '/' + CFG.repo + '/contents/' + CFG.path;
+  const lsGet = (k) => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
+  const lsSet = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) {} };
+  const tok = () => lsGet('claimsReviewKey');
+  const who = () => lsGet('claimsReviewer');
+  const clone = (o) => JSON.parse(JSON.stringify(o));
+
+  let remote = { data: {}, sha: null };
+  let pending = [];
+  let log = {};
+  try { log = JSON.parse(lsGet('claimsReviewCache') || '{}') || {}; } catch (e) { log = {}; }
+  remote.data = clone(log);
+
+  function applyOps(d, ops) {
+    ops.forEach((o) => {
+      if (o.t === 'set') { (d[o.k] = d[o.k] || {})[o.n] = { note: o.note || '', at: o.at, by: o.by || '' }; }
+      else if (d[o.k]) { delete d[o.k][o.n]; if (!Object.keys(d[o.k]).length) delete d[o.k]; }
+    });
+    return d;
+  }
+  const b64 = (str) => { let bin = ''; new TextEncoder().encode(str).forEach((b) => { bin += String.fromCharCode(b); }); return btoa(bin); };
+  const hdrs = () => { const h = { Accept: 'application/vnd.github+json' }; if (tok()) h.Authorization = 'Bearer ' + tok(); return h; };
+
+  async function getRemote() {
+    const r = await fetch(API + '?t=' + Date.now(), { headers: hdrs(), cache: 'no-store' });
+    if (r.status === 404 && !tok()) {
+      try { const p = await fetch('../' + CFG.path + '?t=' + Date.now(), { cache: 'no-store' }); if (p.ok) return { data: (await p.json()) || {}, sha: null }; } catch (e) {}
+      return { data: {}, sha: null };
+    }
+    if (r.status === 404) return { data: {}, sha: null };
+    if (!r.ok) throw { status: r.status };
+    const j = await r.json();
+    const txt = new TextDecoder().decode(Uint8Array.from(atob(j.content.replace(/\n/g, '')), (c) => c.charCodeAt(0)));
+    let d = {}; try { d = JSON.parse(txt) || {}; } catch (e) { d = {}; }
+    return { data: d, sha: j.sha };
+  }
+  async function putRemote(data, sha) {
+    const body = { message: 'Update review log', content: b64(JSON.stringify(data, null, 1)) };
+    if (sha) body.sha = sha;
+    const r = await fetch(API, { method: 'PUT', headers: Object.assign({ 'Content-Type': 'application/json' }, hdrs()), body: JSON.stringify(body) });
+    if (!r.ok) throw { status: r.status };
+    return (await r.json()).content.sha;
+  }
+
+  const $ = (id) => document.getElementById(id);
+  function setStatus(txt, cls) { const e = $('syncSt'); e.textContent = txt; e.className = 'sync ' + (cls || ''); }
+  function stateLine() {
+    if (!tok()) return setStatus('View only · press Connect to edit', 'warn');
+    if (pending.length) return setStatus('Saving…', 'warn');
+    setStatus('Synced', 'ok');
+  }
+  function rebuild() { log = applyOps(clone(remote.data), pending); lsSet('claimsReviewCache', JSON.stringify(log)); renderAll(); }
+
+  async function loadRemote(quiet) {
+    try { remote = await getRemote(); rebuild(); stateLine(); }
+    catch (e) { if (!quiet) setStatus(e.status === 401 || e.status === 403 ? 'Key rejected · reconnect' : 'Offline · showing last saved', 'bad'); }
+  }
+  let flushing = false, again = false, timer = null;
+  function scheduleFlush() { clearTimeout(timer); timer = setTimeout(flush, 700); }
+  async function flush() {
+    if (flushing) { again = true; return; }
+    if (!pending.length || !tok()) return;
+    flushing = true; setStatus('Saving…', 'warn');
+    const ops = pending.slice(); let fatal = false;
+    try {
+      for (let a = 0; a < 4; a++) {
+        const rem = await getRemote();
+        const merged = applyOps(clone(rem.data), ops);
+        try {
+          const sha = await putRemote(merged, rem.sha);
+          remote = { data: merged, sha }; pending = pending.filter((o) => ops.indexOf(o) < 0); rebuild(); stateLine(); break;
+        } catch (e) { if ((e.status === 409 || e.status === 422) && a < 3) continue; throw e; }
+      }
+    } catch (e) {
+      if (e.status === 401 || e.status === 403) { fatal = true; setStatus('Key rejected · reconnect', 'bad'); }
+      else setStatus('Could not save · will retry', 'bad');
+    }
+    flushing = false;
+    if (pending.length && !fatal) setTimeout(flush, again ? 700 : 15000);
+    again = false;
+  }
+  function addOp(op) {
+    if (!tok()) { setStatus('View only · press Connect to edit', 'warn'); return false; }
+    pending = pending.filter((o) => !(o.k === op.k && o.n === op.n)); pending.push(op);
+    rebuild(); stateLine(); scheduleFlush(); return true;
+  }
+
   const pad = (n) => (n < 10 ? '0' : '') + n;
   const ymd = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -398,139 +514,172 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
   const fmt = (k) => { const [y, m, d] = k.split('-').map(Number); return d + ' ' + MONTHS[m - 1].slice(0, 3) + ' ' + y; };
   const fmtLong = (k) => { const [y, m, d] = k.split('-').map(Number); const w = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date(y, m - 1, d).getDay()]; return w + ', ' + d + ' ' + MONTHS[m - 1] + ' ' + y; };
   const typeOf = (n) => { const m = n.match(/\((Chronic|Walk In|VPN)\)$/); return m ? m[1] : 'Other'; };
+  const baseOf = (n) => n.replace(/\s*\((Chronic|Walk In|VPN)\)$/, '');
   const all = COMPANIES.map((c) => c.name).sort((a, b) => a.localeCompare(b));
-  const $ = (id) => document.getElementById(id);
 
   const today = new Date();
   let sel = ymd(today);
   let vy = today.getFullYear(), vm = today.getMonth();
+  let tab = 'day';
 
   const dayCount = (k) => (log[k] ? Object.keys(log[k]).length : 0);
-  function lastReviewed(name) {
-    let best = '';
-    Object.keys(log).forEach((k) => { if (log[k][name] && k > best) best = k; });
-    return best;
-  }
-  function datesOf(name) { return Object.keys(log).filter((k) => log[k][name]).sort().reverse(); }
+  function lastReviewed(name) { let best = ''; Object.keys(log).forEach((k) => { if (log[k][name] && k > best) best = k; }); return best; }
+  const datesOf = (name) => Object.keys(log).filter((k) => log[k][name]).sort().reverse();
+  const canEdit = () => !!tok();
 
   function renderCal() {
     $('monthLbl').textContent = MONTHS[vm] + ' ' + vy;
-    const first = new Date(vy, vm, 1);
-    const offset = (first.getDay() + 1) % 7;               // week starts on Saturday
+    const offset = (new Date(vy, vm, 1).getDay() + 1) % 7;
     const days = new Date(vy, vm + 1, 0).getDate();
     let h = DOW.map((d) => '<div class="dow">' + d + '</div>').join('');
     for (let i = 0; i < offset; i++) h += '<div class="day empty"></div>';
     const tk = ymd(today);
     for (let d = 1; d <= days; d++) {
-      const k = vy + '-' + pad(vm + 1) + '-' + pad(d);
-      const n = dayCount(k);
+      const k = vy + '-' + pad(vm + 1) + '-' + pad(d); const n = dayCount(k);
       h += '<button type="button" class="day' + (k === tk ? ' today' : '') + (k === sel ? ' sel' : '') + '" data-d="' + k + '">' + d + (n ? '<span class="dot"></span><span class="n">' + n + '</span>' : '') + '</button>';
     }
     $('calGrid').innerHTML = h;
   }
-
   function renderDay() {
     $('dayTitle').textContent = fmtLong(sel);
-    const n = dayCount(sel);
-    $('dayMeta').textContent = n + ' of ' + all.length + ' reviewed on this day';
+    $('dayMeta').textContent = dayCount(sel) + ' of ' + all.length + ' reviewed on this day' + (canEdit() ? '' : ' · view only');
     const q = $('q').value.trim().toLowerCase(), t = $('typeF').value, st = $('stateF').value;
     const rows = all.filter((name) => {
       if (q && name.toLowerCase().indexOf(q) < 0) return false;
       if (t && typeOf(name) !== t) return false;
       const done = !!(log[sel] && log[sel][name]);
-      if (st === 'done' && !done) return false;
-      if (st === 'todo' && done) return false;
-      return true;
+      return !(st === 'done' && !done) && !(st === 'todo' && done);
     });
     if (!rows.length) { $('dayList').innerHTML = '<div class="emptyh">No companies match.</div>'; return; }
+    const dis = canEdit() ? '' : ' disabled';
     $('dayList').innerHTML = rows.map((name) => {
-      const e = log[sel] && log[sel][name];
-      const lr = lastReviewed(name);
-      const base = name.replace(/\s*\((Chronic|Walk In|VPN)\)$/, '');
-      const ty = typeOf(name);
-      return '<div class="it' + (e ? ' done' : '') + '"><label><input type="checkbox" data-n="' + esc(name) + '"' + (e ? ' checked' : '') + '><span>' + esc(base) + '</span>' + (ty !== 'Other' ? '<span class="badge">' + ty + '</span>' : '') + '</label>' +
-        (e ? '<input class="note" type="text" data-note="' + esc(name) + '" placeholder="Note (optional)" value="' + esc(e.note || '') + '">' : '<span class="last">' + (lr ? 'Last: ' + fmt(lr) : 'Never reviewed') + '</span>') + '</div>';
+      const e = log[sel] && log[sel][name]; const lr = lastReviewed(name); const ty = typeOf(name);
+      return '<div class="it' + (e ? ' done' : '') + '"><label><input type="checkbox" data-n="' + esc(name) + '"' + (e ? ' checked' : '') + dis + '><span>' + esc(baseOf(name)) + '</span>' + (ty !== 'Other' ? '<span class="badge">' + ty + '</span>' : '') + '</label>' +
+        (e ? '<input class="note" type="text" data-note="' + esc(name) + '" placeholder="Note (optional)" value="' + esc(e.note || '') + '"' + dis + '>' + (e.by ? '<span class="last">' + esc(e.by) + '</span>' : '') : '<span class="last">' + (lr ? 'Last: ' + fmt(lr) : 'Never reviewed') + '</span>') + '</div>';
     }).join('');
   }
-
   function renderCo() {
     const name = $('coSel').value;
     if (!name) { $('coMeta').textContent = 'Choose a company to see its history.'; $('coList').innerHTML = ''; return; }
     const ds = datesOf(name);
     $('coMeta').textContent = ds.length ? ds.length + ' review' + (ds.length > 1 ? 's' : '') + ' · last on ' + fmt(ds[0]) : 'Never reviewed.';
+    const dis = canEdit() ? '' : ' disabled';
     $('coList').innerHTML = ds.length ? ds.map((k) => {
       const e = log[k][name];
-      return '<div class="it"><label style="cursor:default"><span>' + fmt(k) + '</span></label><input class="note" type="text" data-cnote="' + k + '" placeholder="Note (optional)" value="' + esc(e.note || '') + '"><button class="xbtn" type="button" data-rm="' + k + '">Remove</button></div>';
+      return '<div class="it"><label style="cursor:default"><span>' + fmt(k) + '</span></label>' + (e.by ? '<span class="last">' + esc(e.by) + '</span>' : '') + '<input class="note" type="text" data-cnote="' + k + '" placeholder="Note (optional)" value="' + esc(e.note || '') + '"' + dis + '><button class="xbtn" type="button" data-rm="' + k + '"' + dis + '>Remove</button></div>';
     }).join('') : '<div class="emptyh">No reviews yet. Pick a date above and press "Add review".</div>';
   }
-
-  function setReview(k, name, on) {
-    if (on) { (log[k] = log[k] || {})[name] = log[k][name] || { note: '', at: Date.now() }; }
-    else if (log[k]) { delete log[k][name]; if (!Object.keys(log[k]).length) delete log[k]; }
-    save();
+  function rvRows() {
+    const f = $('rvFrom').value, t = $('rvTo').value, q = $('rvQ').value.trim().toLowerCase(), ty = $('rvType').value;
+    const out = [];
+    all.forEach((name) => {
+      if (q && name.toLowerCase().indexOf(q) < 0) return;
+      if (ty && typeOf(name) !== ty) return;
+      const ds = datesOf(name).filter((k) => (!f || k >= f) && (!t || k <= t));
+      if (ds.length) out.push({ name, ds });
+    });
+    out.sort((a, b) => (b.ds[0] > a.ds[0] ? 1 : b.ds[0] < a.ds[0] ? -1 : a.name.localeCompare(b.name)));
+    return out;
   }
+  function renderRv() {
+    const rows = rvRows();
+    $('rvMeta').textContent = rows.length + ' compan' + (rows.length === 1 ? 'y' : 'ies') + ' reviewed' + ($('rvFrom').value || $('rvTo').value ? ' in this range' : ' so far');
+    $('rvList').innerHTML = rows.length ? rows.map((r) => {
+      const ty = typeOf(r.name);
+      return '<div class="it"><label style="cursor:default"><span>' + esc(baseOf(r.name)) + '</span>' + (ty !== 'Other' ? '<span class="badge">' + ty + '</span>' : '') + '</label><div class="chips">' + r.ds.map((k) => '<span class="chip2" title="' + esc((log[k][r.name].by || '') + ((log[k][r.name].note) ? ' — ' + log[k][r.name].note : '')) + '">' + fmt(k) + '</span>').join('') + '</div><span class="cnt">' + r.ds.length + 'x</span></div>';
+    }).join('') : '<div class="emptyh">Nothing reviewed in this range.</div>';
+  }
+  function renderAll() { renderCal(); renderDay(); if (tab === 'co') renderCo(); if (tab === 'rv') renderRv(); }
 
   $('calGrid').addEventListener('click', (e) => { const b = e.target.closest('[data-d]'); if (!b) return; sel = b.dataset.d; renderCal(); renderDay(); });
   $('prevM').addEventListener('click', () => { vm--; if (vm < 0) { vm = 11; vy--; } renderCal(); });
   $('nextM').addEventListener('click', () => { vm++; if (vm > 11) { vm = 0; vy++; } renderCal(); });
   $('todayBtn').addEventListener('click', () => { sel = ymd(new Date()); const d = new Date(); vy = d.getFullYear(); vm = d.getMonth(); renderCal(); renderDay(); });
   ['q', 'typeF', 'stateF'].forEach((id) => $(id).addEventListener('input', renderDay));
+  const entry = (k, n) => (log[k] && log[k][n]) || null;
   $('dayList').addEventListener('change', (e) => {
     const c = e.target.closest('input[type=checkbox]'); if (!c) return;
-    setReview(sel, c.dataset.n, c.checked); renderCal(); renderDay();
+    const n = c.dataset.n;
+    if (!addOp(c.checked ? { t: 'set', k: sel, n, note: '', at: Date.now(), by: who() } : { t: 'del', k: sel, n })) c.checked = !c.checked;
   });
   $('dayList').addEventListener('input', (e) => {
-    const n = e.target.closest('[data-note]'); if (!n || !log[sel] || !log[sel][n.dataset.note]) return;
-    log[sel][n.dataset.note].note = n.value; save();
+    const x = e.target.closest('[data-note]'); if (!x) return; const old = entry(sel, x.dataset.note); if (!old) return;
+    const pos = x.selectionStart;
+    pending = pending.filter((o) => !(o.k === sel && o.n === x.dataset.note));
+    pending.push({ t: 'set', k: sel, n: x.dataset.note, note: x.value, at: old.at, by: old.by });
+    log = applyOps(clone(remote.data), pending); lsSet('claimsReviewCache', JSON.stringify(log)); stateLine(); scheduleFlush();
   });
 
   $('coSel').innerHTML = '<option value="">Select a company</option>' + all.map((n) => '<option value="' + esc(n) + '">' + esc(n) + '</option>').join('');
   $('coDate').value = ymd(today);
   $('coSel').addEventListener('change', renderCo);
-  $('coAdd').addEventListener('click', () => {
-    const name = $('coSel').value, d = $('coDate').value; if (!name || !d) return;
-    setReview(d, name, true); renderCo(); renderCal(); renderDay();
-  });
-  $('coList').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-rm]'); if (!b) return;
-    setReview(b.dataset.rm, $('coSel').value, false); renderCo(); renderCal(); renderDay();
-  });
+  $('coAdd').addEventListener('click', () => { const n = $('coSel').value, d = $('coDate').value; if (!n || !d) return; addOp({ t: 'set', k: d, n, note: '', at: Date.now(), by: who() }); });
+  $('coList').addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (!b) return; addOp({ t: 'del', k: b.dataset.rm, n: $('coSel').value }); });
   $('coList').addEventListener('input', (e) => {
-    const n = e.target.closest('[data-cnote]'); const name = $('coSel').value;
-    if (!n || !log[n.dataset.cnote] || !log[n.dataset.cnote][name]) return;
-    log[n.dataset.cnote][name].note = n.value; save();
+    const x = e.target.closest('[data-cnote]'); const n = $('coSel').value; if (!x) return; const old = entry(x.dataset.cnote, n); if (!old) return;
+    pending = pending.filter((o) => !(o.k === x.dataset.cnote && o.n === n));
+    pending.push({ t: 'set', k: x.dataset.cnote, n, note: x.value, at: old.at, by: old.by });
+    log = applyOps(clone(remote.data), pending); lsSet('claimsReviewCache', JSON.stringify(log)); stateLine(); scheduleFlush();
   });
 
-  function showTab(day) {
-    $('viewDay').hidden = !day; $('viewCo').hidden = day;
-    $('tabDay').classList.toggle('on', day); $('tabCo').classList.toggle('on', !day);
-    if (!day) renderCo();
+  ['rvFrom', 'rvTo', 'rvQ', 'rvType'].forEach((id) => $(id).addEventListener('input', renderRv));
+  $('rvMonth').addEventListener('click', () => { const d = new Date(); $('rvFrom').value = ymd(new Date(d.getFullYear(), d.getMonth(), 1)); $('rvTo').value = ymd(new Date(d.getFullYear(), d.getMonth() + 1, 0)); renderRv(); });
+  $('rvAll').addEventListener('click', () => { $('rvFrom').value = ''; $('rvTo').value = ''; renderRv(); });
+  $('rvCopy').addEventListener('click', async () => {
+    const txt = rvRows().map((r) => r.name + ' - ' + r.ds.slice().reverse().map(fmt).join(', ')).join('\n');
+    try { await navigator.clipboard.writeText(txt); $('bkMsg').textContent = 'List copied.'; }
+    catch (e) { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); $('bkMsg').textContent = 'List copied.'; } catch (x) { $('bkMsg').textContent = 'Copy failed.'; } ta.remove(); }
+  });
+  const csvq = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  $('rvCsv').addEventListener('click', () => {
+    const lines = [['Company', 'Type', 'Date', 'Reviewed by', 'Note'].map(csvq).join(',')];
+    rvRows().forEach((r) => r.ds.slice().reverse().forEach((k) => { const e = log[k][r.name]; lines.push([baseOf(r.name), typeOf(r.name), k, e.by || '', e.note || ''].map(csvq).join(',')); }));
+    const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'reviewed-' + ymd(new Date()) + '.csv';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+
+  function showTab(t) {
+    tab = t;
+    $('viewDay').hidden = t !== 'day'; $('viewCo').hidden = t !== 'co'; $('viewRv').hidden = t !== 'rv';
+    $('tabDay').classList.toggle('on', t === 'day'); $('tabCo').classList.toggle('on', t === 'co'); $('tabRv').classList.toggle('on', t === 'rv');
+    renderAll();
   }
-  $('tabDay').addEventListener('click', () => showTab(true));
-  $('tabCo').addEventListener('click', () => showTab(false));
+  $('tabDay').addEventListener('click', () => showTab('day'));
+  $('tabCo').addEventListener('click', () => showTab('co'));
+  $('tabRv').addEventListener('click', () => showTab('rv'));
+
+  $('who').value = who();
+  $('who').addEventListener('input', () => lsSet('claimsReviewer', $('who').value.trim()));
+  $('refresh').addEventListener('click', () => { if (pending.length) flush(); else loadRemote(); });
+  $('connBtn').addEventListener('click', () => { $('connBox').hidden = !$('connBox').hidden; });
+  $('tokSave').addEventListener('click', () => { const v = $('tokIn').value.trim(); if (!v) return; lsSet('claimsReviewKey', v); $('tokIn').value = ''; $('connBox').hidden = true; $('connBtn').textContent = 'Connected'; stateLine(); renderAll(); loadRemote(); });
+  $('tokClear').addEventListener('click', () => { lsSet('claimsReviewKey', ''); $('connBtn').textContent = 'Connect to edit'; $('connBox').hidden = true; stateLine(); renderAll(); });
+  if (tok()) $('connBtn').textContent = 'Connected';
 
   $('exp').addEventListener('click', () => {
     const blob = new Blob([JSON.stringify(log, null, 2)], { type: 'application/json' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'review-log-' + ymd(new Date()) + '.json';
-    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    $('bkMsg').textContent = 'Backup downloaded.';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); $('bkMsg').textContent = 'Backup downloaded.';
   });
-  $('imp').addEventListener('click', () => $('impFile').click());
+  $('imp').addEventListener('click', () => { if (!tok()) { $('bkMsg').textContent = 'Connect first to import.'; return; } $('impFile').click(); });
   $('impFile').addEventListener('change', (e) => {
     const f = e.target.files[0]; if (!f) return;
     const r = new FileReader();
     r.onload = () => {
       try {
         const data = JSON.parse(r.result); if (!data || typeof data !== 'object' || Array.isArray(data)) throw 0;
-        Object.keys(data).forEach((k) => { if (/^\d{4}-\d{2}-\d{2}$/.test(k) && data[k] && typeof data[k] === 'object') { log[k] = Object.assign(log[k] || {}, data[k]); } });
-        save(); renderCal(); renderDay(); renderCo(); $('bkMsg').textContent = 'Backup imported.';
+        let n = 0;
+        Object.keys(data).forEach((k) => { if (/^\d{4}-\d{2}-\d{2}$/.test(k) && data[k] && typeof data[k] === 'object') Object.keys(data[k]).forEach((name) => { const e2 = data[k][name] || {}; pending = pending.filter((o) => !(o.k === k && o.n === name)); pending.push({ t: 'set', k, n: name, note: e2.note || '', at: e2.at || Date.now(), by: e2.by || '' }); n++; }); });
+        rebuild(); stateLine(); scheduleFlush(); $('bkMsg').textContent = n + ' reviews imported.';
       } catch (err) { $('bkMsg').textContent = 'That file is not a valid backup.'; }
       $('impFile').value = '';
     };
     r.readAsText(f);
   });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && !pending.length && !flushing) loadRemote(true); });
 
-  renderCal(); renderDay(); renderCo();
+  renderAll(); stateLine(); loadRemote();
 })();
 </script>
 </body>
