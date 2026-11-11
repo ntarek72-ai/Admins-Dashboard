@@ -115,6 +115,7 @@ td.num, th.num { text-align: right; font-family: var(--mono); }
     <div class="row" id="revrow" hidden><button id="rev" type="button">⇅ Reverse the order of the list</button></div>
     <div class="row">
       <label class="check"><input type="checkbox" id="splitonly"> Also make a PDF with only the split orders</label>
+      <label class="check"><input type="checkbox" id="attachleft"> Items not found in any approval: keep them on the closest receipt (by price) instead of a separate receipt at the end</label>
       <button class="primary" id="run" disabled>Split receipts</button>
     </div>
     <div class="row" style="margin-top:12px">
@@ -959,7 +960,9 @@ async function processPdf(fileBytes, opts) {
   let dupTotal = 0;
   const grabNum = (txt, re) => { const m = re.exec(txt); return m ? toMicro(m[1]) : null; };
 
+  const skipOrder = new Set();
   for (let oi = 0; oi < orders.length; oi++) {
+    if (skipOrder.has(oi)) continue;          // folded into the previous order
     const [s, e] = orders[oi];
     const label = (/Order Number:?\s*(\S+)/.exec(info[s].text) || [])[1] || `pages ${s + 1}-${e}`;
     const recStarts = []; for (let i = s + 1; i < e; i++) if (/Reciept #/.test(info[i].text)) recStarts.push(i);
@@ -1018,7 +1021,7 @@ async function processPdf(fileBytes, opts) {
       continue;
     }
 
-    let an = null, groups = null, left = [], quiet = null, trivial = false;
+    let an = null, groups = null, left = [], quiet = null, trivial = false, foldNext = -1;
     const derived = [], aRowsCache = {}; let clashDone = false;
     const rowAt = i => i < an.rows.length ? an.rows[i] : derived[i - an.rows.length];
     const aAll = k => aRowsCache[k] || (aRowsCache[k] = approvalRows(L, ctx, pages, receipts[k].pages));
@@ -1026,6 +1029,29 @@ async function processPdf(fileBytes, opts) {
     try {
       const scans = []; for (let i = s; i < invEnd; i++) { if (!info[i].inv) throw new Error('could not read an invoice page'); scans.push(scanPage(L, ctx, pages[i])); }
       an = analyzeInvoice(scans, info[s].text);
+      // option: the next block has the same order number but no approval at all -> its items join this order as "items without approval"
+      if (opts.attachLeft && oi + 1 < orders.length) {
+        const [s2, e2] = orders[oi + 1];
+        const lab2 = (/Order Number:?\s*(\S+)/.exec(info[s2].text) || [])[1];
+        const card = t => (/Card Number:?\s*(\d+)/.exec(t) || [])[1];
+        let hasAppr = false; for (let i = s2; i < e2; i++) if (i > s2 && (/Reciept #/.test(info[i].text) || info[i].blank)) hasAppr = true;
+        if (opts.debugFold) console.log('fold?', oi, lab2, label, hasAppr, card(info[s2].text), card(info[s].text));
+        if (lab2 === label && /Pharmacy Invoice/.test(info[s2].text) && !hasAppr && card(info[s2].text) && card(info[s2].text) === card(info[s].text)) {
+          try {
+            const sc2 = []; for (let i = s2; i < e2; i++) { if (!info[i].inv) throw new Error('x'); sc2.push(scanPage(L, ctx, pages[i])); }
+            const an2 = analyzeInvoice(sc2, info[s2].text);
+            const ok = an2.rows.every(r => r.runs.every(ru => { const f1 = an.first.scan.fonts[ru.font], f2 = an2.pages[r.page].scan.fonts[ru.font]; return f1 && f2 && f1.ref === f2.ref; }));
+            if (opts.debugFold) console.log('ok', ok, an2.rows.length);
+            if (ok && an2.rows.length) {
+              const base = an.pages.length;
+              an2.pages.forEach(p => an.pages.push(p));
+              an2.rows.forEach(r => an.rows.push({ ...r, page: base + r.page }));
+              an.total += an2.total; an.disc += an2.disc; if (an.net !== null && an2.net !== null) an.net += an2.net;
+              foldNext = oi + 1;
+            }
+          } catch (_) { if (opts.debugFold) console.log("fold fail", _.message); }
+        }
+      }
       Object.keys(alts).forEach(id => {      // the same approval twice with different content: keep the one whose prices match the receipt
         const sc = alts[id].map(c => ({ c, mm: priceMismatches(an, approvalRows(L, ctx, pages, c.pages).filter(r => !r.bad)) }));
         const ok = sc.filter(x => x.mm === 0);
@@ -1103,6 +1129,23 @@ async function processPdf(fileBytes, opts) {
           left = still;
           groups.forEach(g => g.sort((a, b) => ord(a) - ord(b)));
         }
+        if (!problems.length && left.length && opts.attachLeft && groups.length) {
+          // optional: keep the unmatched item on the receipt of the approval whose item prices are closest to it (no receipt of its own)
+          const ord2 = i => { const r = rowAt(i); return r.page * 1e5 + r.t; };
+          const names = [];
+          left.forEach(ri => {
+            let best = -1, bd = Infinity;
+            // an approval holding an unclaimed line with the same amount as this item is the best home for it (e.g. a substituted item)
+            const same = []; receipts.forEach((rc, k) => { if (aRowsOf(k).some(r => r.gross !== null && Math.abs(cents(r.gross) - cents(an.rows[ri].total)) <= 200)) same.push(k); });
+            if (same.length === 1) best = same[0]; else
+            // closest in price = the approval whose receipt total is closest to this item's amount (normally the small one)
+            groups.forEach((g, k) => { const gt = g.reduce((p, gi) => p + rowAt(gi).total, 0), d = Math.abs(gt - an.rows[ri].total); if (d < bd) { bd = d; best = k; } });
+            if (best >= 0) { groups[best].push(ri); names.push(`${an.rows[ri].name} (kept with approval #${receipts[best].id})`); }
+          });
+          groups.forEach(g => g.sort((a, b) => ord2(a) - ord2(b)));
+          left = [];
+          if (names.length) warnings.push(`items not found in any approval: ${names.join('; ')}`);
+        }
         if (!problems.length && left.length) warnings.push(`items not found in any approval: ${left.map(i => an.rows[i].name).join('; ')}`);
         if (!problems.length) {
           const t_ = an.rows.reduce((p, r) => p + r.total, 0), d_ = an.rows.reduce((p, r) => p + r.disc, 0);
@@ -1123,7 +1166,8 @@ async function processPdf(fileBytes, opts) {
       report.push({ order: label, status: 'UNCHANGED - needs review', problems, approvals: all.length });
       continue;
     }
-    const doSplit = !trivial && !quiet && (receipts.length > 1 || left.length > 0);
+    const doSplit = !trivial && !quiet && (receipts.length > 1 || left.length > 0 || foldNext >= 0);
+    if (doSplit && foldNext >= 0) skipOrder.add(foldNext);
     if (!doSplit) {
       keepOrder();
       report.push({ order: label, status: 'unchanged', note: quiet ? 'one approval (not checked: ' + quiet + ')' : 'one approval only', approvals: receipts.length, serial: stamp, warnings });
@@ -1459,7 +1503,7 @@ if (typeof module !== 'undefined') module.exports = root.SplitCore;
       try {
         var bytes = new Uint8Array(await f.arrayBuffer());
         var res = await window.SplitCore.processPdf(bytes, {
-          PDFLib: window.PDFLib, splitOnly: splitOnly, numbering: { enabled: useNum, start: nextNo }, ocrPage: makeOcr(bytes),
+          PDFLib: window.PDFLib, splitOnly: splitOnly, attachLeft: $('attachleft').checked, numbering: { enabled: useNum, start: nextNo }, ocrPage: makeOcr(bytes),
           onProgress: function (p) { phase.textContent = p.phase + ' ' + p.done + ' / ' + p.total; fill.style.width = (p.total ? Math.round(100 * p.done / p.total) : 0) + '%'; }
         });
         if (useNum && res.stats.nextSerial != null) nextNo = res.stats.nextSerial;   // several files: keep counting
