@@ -220,7 +220,7 @@ select:focus-visible,.btn:focus-visible{outline:3px solid #14181F;outline-offset
 
   <section id="checker">
     <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
-      <h2>Review a sheet <span style="font-size:12px;font-weight:600;color:#6b7280;margin-left:8px">version 12 Nov 12:25</span></h2>
+      <h2>Review a sheet <span style="font-size:12px;font-weight:600;color:#6b7280;margin-left:8px">version 12 Nov 14:05</span></h2>
       <div style="font-size:15px;color:#5B6671">Upload the sheet you want to check. It is read inside your browser and is not uploaded anywhere.</div>
     </div>
     <div class="ckbox">
@@ -1209,7 +1209,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
   function overlapScore(hA, hB) { const b = {}; hB.forEach((h) => { b[h.key] = 1; }); let n = 0; hA.forEach((h) => { if (b[h.key]) n++; }); return n; }
 
   function numish(v) { if (typeof v === 'number') return v; if (typeof v === 'string' && v.trim() !== '' && isFinite(Number(v.replace(/,/g, '')))) return Number(v.replace(/,/g, '')); return null; }
-  function same(got, exp) {
+  function same(got, exp, tight) { // tight = rates / percentages (compared to the piaster); amounts are only wrong from a whole pound
     if (exp && exp.err) return { ok: false, e: exp.err, text: true };
     const bl = (x) => isBlank(x) || (typeof x === 'string' && /^\(blank\)$/i.test(x.trim()));
     let g = bl(got) ? '' : got, e = bl(exp) ? '' : exp;
@@ -1218,9 +1218,9 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
     if (typeof g === 'number' && g > 30000 && g < 80000 && isoMin(e)) { const sg = serial(g); if (sg) g = sg; }
     if (typeof e === 'number' && e > 30000 && e < 80000 && isoMin(g)) { const se = serial(e); if (se) e = se; }
     if (g === '' && e === '') return { ok: true };
-    const gn = numish(g), en = numish(e);
-    if (g === '' && en === 0) return { ok: true }; if (e === '' && gn === 0) return { ok: true };
-    if (gn !== null && en !== null) { const d = Math.abs(gn - en); return { ok: d <= 0.0105, d: d }; }
+    const gn = numish(g), en = numish(e), lim = tight ? 0.0105 : 0.9999;
+    if (g === '' && en !== null) return { ok: Math.abs(en) <= lim, d: Math.abs(en) }; if (e === '' && gn !== null) return { ok: Math.abs(gn) <= lim, d: Math.abs(gn) };
+    if (gn !== null && en !== null) { const d = Math.abs(gn - en); return { ok: d <= lim, d: d }; }
     if (typeof g === 'boolean' || typeof e === 'boolean') return { ok: String(g).toUpperCase() === String(e).toUpperCase(), text: true };
     const ns = (x) => { x = String(x).trim().toLowerCase(); return /^\d{4}-\d{2}-\d{2}[ t]\d{2}:\d{2}:\d{2}/.test(x) ? x.slice(0, 16).replace('t', ' ') : x; };
     return { ok: ns(g) === ns(e), text: true };
@@ -1230,7 +1230,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
 
   function kn(v) { // key normaliser: trims, dates -> minute precision
     if (typeof v === 'number' && v > 30000 && v < 80000 && v % 1 !== 0) { const d = new Date(Math.round((v - 25569) * 86400000)); return d.toISOString().slice(0, 16).replace('T', ' '); }
-    const x = String(v).trim(); const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/.exec(x); return m ? m[1] + ' ' + m[2] : x.toLowerCase();
+    const x = String(v).trim(); const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/.exec(x); if (m) return m[1] + ' ' + m[2]; let y = x.toLowerCase().replace(/^re[cs]?[ei]+pt\s*#?\s*/, ''); return /^0+(\.0+)?$/.test(y) ? '' : y; // a leading "Reciept #" and a 0 do not make two references different
   }
   function pickKey(calc, tName, thr, maxRow, us, uhr, um, cands) {
     let kb = 0, keyCol = null;
@@ -1345,8 +1345,14 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
         keyCol = pickKey(calc, p.t, thr, maxRow, us, uhr, um, shared);
         if (!keyCol) { res.notes.push('Could not match invoices in "' + p.u + '" to the template "' + p.t + '", so that tab was not compared.'); return; }
         sheetRes.key = keyCol.name;
+        if (keyCol.multi) { // an invoice that only differs in the later reference columns (e.g. approval number) is still the same invoice: pair by the first column
+          const tk = {}; for (let r = thr + 1; r <= maxRow; r++) { const v = keyCol.tk(r); if (v !== '') tk[v] = 1; }
+          const uf = {}, tf = {}; Object.keys(keyCol.set).forEach((k) => { if (!tk[k]) (uf[k.split('|')[0]] = uf[k.split('|')[0]] || []).push(k); }); Object.keys(tk).forEach((k) => { if (keyCol.set[k] === undefined) (tf[k.split('|')[0]] = tf[k.split('|')[0]] || []).push(k); });
+          keyCol.paired = {}; Object.keys(tf).forEach((f) => { if (f !== '' && tf[f].length === 1 && uf[f] && uf[f].length === 1) { keyCol.set[tf[f][0]] = keyCol.set[uf[f][0]]; keyCol.paired[uf[f][0]] = 1; } });
+        }
       }
-      const cmpCols = shared.filter((h) => isFormula(ts, thr, h.c) && (!keyCol || (keyCol.skip.indexOf(h.key) < 0 && !(keyCol.multi && keyCol.cols.some((k) => k.key === h.key) && false))));
+      const ID = /approv|\bref|reference|ticket|\bcard\b|order ?#|erx|receipt|reciept|^inv(oice)?( ?#)?$|\bid\b|number|\bcode\b|portal|stage|channel|status|\bname\b|date|create/i; // identifiers and labels are not calculations
+      const cmpCols = shared.filter((h) => isFormula(ts, thr, h.c) && !ID.test(h.name) && (!keyCol || (keyCol.skip.indexOf(h.key) < 0 && !(keyCol.multi && keyCol.cols.some((k) => k.key === h.key) && false))));
       cmpCols.forEach((h) => { sheetRes.cols.push({ name: h.name, n: 0, diffs: 0, rows: [] }); });
       const aligned = [];
       for (let r = thr + 1; r <= maxRow; r++) {
@@ -1359,14 +1365,14 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
           const ex = calc.getRC(p.t, r, h.c), x = us.cells[XL.addr(ur, um[h.key].c)], got = x ? x.v : undefined;
           if (ex && ex.msg) res.unsupported[ex.msg] = 1;
           const sc = sheetRes.cols[i]; if (!isBlank(ex)) sc.anyExp = true;
-          const s = same(got, ex); sc.n++;
+          const s = same(got, ex, /%|rebates?$|rate|percent/i.test(h.name)); sc.n++;
           if (!s.ok) sc.rows.push({ sheet: p.u, tpl: p.t, row: ur, ref: ref, field: h.name, got: show(got), expected: show(ex), diff: s.d == null ? '' : s.d, kind: s.text ? 'text' : 'amount' });
         });
       }
       // also: invoices that exist in the user's sheet but not in the template result
       if (p.kind !== 'line' && keyCol) {
         const tkeys = {}; for (let r = thr + 1; r <= maxRow; r++) { const v = keyCol.tk(r); if (v !== '') tkeys[v] = 1; }
-        Object.keys(keyCol.set).forEach((k) => { if (!tkeys[k] && !TOT.test(k)) { sheetRes.diffs++; res.issues.push({ sheet: p.u, tpl: p.t, row: keyCol.set[k], ref: k, field: '(invoice)', got: 'in your sheet', expected: 'not in template result', diff: '' }); } });
+        Object.keys(keyCol.set).forEach((k) => { if (!tkeys[k] && !TOT.test(k) && !(keyCol.paired && keyCol.paired[k])) { sheetRes.diffs++; res.issues.push({ sheet: p.u, tpl: p.t, row: keyCol.set[k], ref: k, field: '(invoice)', got: 'in your sheet', expected: 'not in template result', diff: '' }); } });
       }
       // template formula columns with no same-named column: look for a column in the user's tab holding the same values
       const usedU = {}; Object.keys(um).forEach((k) => { if (k !== '__fuzzy' && um[k]) usedU[um[k].key] = 1; });
@@ -1374,7 +1380,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
         const tv = aligned.map((a) => calc.getRC(p.t, a[0], h.c)); const nb = tv.filter((v) => !isBlank(v) && !(v && v.err));
         if (nb.length < 3 || new Set(nb.map((v) => String(v))).size < 2) return;
         let best = 0, bu = null;
-        uh.forEach((x) => { if (usedU[x.key]) return; let ok = 0, n = 0; aligned.forEach((a, i) => { if (isBlank(tv[i]) || (tv[i] && tv[i].err)) return; n++; const c = us.cells[XL.addr(a[1], x.c)]; if (same(c ? c.v : undefined, tv[i]).ok) ok++; }); const f = n ? ok / n : 0; if (f > best) { best = f; bu = x; } });
+        uh.forEach((x) => { if (usedU[x.key]) return; let ok = 0, n = 0; aligned.forEach((a, i) => { if (isBlank(tv[i]) || (tv[i] && tv[i].err)) return; n++; const c = us.cells[XL.addr(a[1], x.c)]; if (same(c ? c.v : undefined, tv[i], true).ok) ok++; }); const f = n ? ok / n : 0; if (f > best) { best = f; bu = x; } });
         if (!bu || best < 0.8) return;
         usedU[bu.key] = 1; sheetRes.notCompared = sheetRes.notCompared.filter((n) => n !== h.name);
         sheetRes.matchedByValues = (sheetRes.matchedByValues || []).concat([h.name + ' = ' + bu.name]);
@@ -1384,6 +1390,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
       });
       sheetRes.cols.forEach((c) => {
         if (!c.anyExp && c.rows.length) { c.skipped = true; c.note = 'the template leaves this column empty for these rows (it depends on data the template does not get from your sheet), so it was not compared'; return; }
+        c.rows = c.rows.filter((x) => x.kind === 'amount'); // only calculations count: text such as approval numbers, names or dates is not reviewed
         c.diffs = c.rows.length; sheetRes.diffs += c.diffs; res.counts.cells += c.n; c.rows.forEach((x) => { res.issues.push(x); });
         if (!c.rows.length) res.counts.cells += 0;
       });
