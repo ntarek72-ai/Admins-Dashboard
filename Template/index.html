@@ -220,7 +220,7 @@ select:focus-visible,.btn:focus-visible{outline:3px solid #14181F;outline-offset
 
   <section id="checker">
     <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
-      <h2>Review a sheet <span style="font-size:12px;font-weight:600;color:#6b7280;margin-left:8px">version 12 Nov 15:15</span></h2>
+      <h2>Review a sheet <span style="font-size:12px;font-weight:600;color:#6b7280;margin-left:8px">version 12 Nov 16:00</span></h2>
       <div style="font-size:15px;color:#5B6671">Upload the sheet you want to check. It is read inside your browser and is not uploaded anywhere.</div>
     </div>
     <div class="ckbox">
@@ -1167,10 +1167,12 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
     return 1;
   }
   function headers(s, hr) { // [{c, name, key}] with duplicate suffix
-    const seen = {}, out = [];
+    const seen = {}, out = [], plain = {};
+    for (let c = 1; c <= s.maxC; c++) { const x = s.cells[XL.addr(hr, c)]; if (x && x.v != null && !/%/.test(String(x.v))) { const k0 = norm(String(x.v).trim().replace(/\s+y$/i, '')); if (k0) plain[k0] = 1; } }
     for (let c = 1; c <= s.maxC; c++) {
       const x = s.cells[XL.addr(hr, c)]; if (!x || x.v == null || String(x.v).trim() === '') continue;
-      const k = norm(String(x.v).trim().replace(/\s+y$/i, '')); if (!k) continue; seen[k] = (seen[k] || 0) + 1;
+      let k = norm(String(x.v).trim().replace(/\s+y$/i, '')); if (!k) continue; if (/%/.test(String(x.v)) && plain[k]) k += 'pct'; // "SP REB %" and "SP REB" are two different columns
+      seen[k] = (seen[k] || 0) + 1;
       out.push({ c: c, name: String(x.v).trim(), key: k + (seen[k] > 1 ? '#' + seen[k] : '') });
     }
     return out;
@@ -1197,6 +1199,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
       if (!u && base.length >= 3) u = rest(uH).filter((x) => { const b = x.key.replace(/#\d+$/, ''), sh = base.length < b.length ? base : b, lg = base.length < b.length ? b : base; return sh.length >= 3 && lg.length - sh.length <= 3 && lg.indexOf(sh) === 0 && /val$/.test(base) === /val$/.test(b); })[0];
       if (!u && /val$/.test(base) && base.length >= 6) { const root = base.slice(0, -3); u = rest(uH).filter((x) => { const b = x.key.replace(/#\d+$/, ''); return /val$/.test(b) && b.length - 3 >= 3 && (b.slice(0, -3).indexOf(root) === 0 || root.indexOf(b.slice(0, -3)) === 0) && Math.abs(b.length - base.length) <= 3; })[0]; }
       if (!u) { let best = 0, bu = null, tie = false; rest(uH).forEach((x) => { const sc = tokSim(h.name, x.name); if (sc > best) { best = sc; bu = x; tie = false; } else if (sc === best && sc > 0) tie = true; }); if (best >= 0.6 && !tie) { u = bu; out.__fuzzy = (out.__fuzzy || []).concat([h.name + ' = ' + bu.name]); } }
+      if (!u && /%/.test(h.name)) { const T = toks(h.name); const cand = rest(uH).filter((x) => /%/.test(x.name) && toks(x.name).some((t) => T.indexOf(t) >= 0)); if (cand.length === 1) u = cand[0]; } // a percentage column that shares a word with it ("SP REB %" = "SP %")
       if (u) { out[h.key] = u; used[u.key] = 1; }
     });
     // position: a template column whose left and right neighbours are both matched, with exactly one unmatched column of yours between them, is that column (e.g. "So" = "Order")
