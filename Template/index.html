@@ -220,7 +220,7 @@ select:focus-visible,.btn:focus-visible{outline:3px solid #14181F;outline-offset
 
   <section id="checker">
     <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
-      <h2>Review a sheet <span style="font-size:12px;font-weight:600;color:#6b7280;margin-left:8px">version 12 Nov 16:00</span></h2>
+      <h2>Review a sheet <span style="font-size:12px;font-weight:600;color:#6b7280;margin-left:8px">version 12 Nov 16:50</span></h2>
       <div style="font-size:15px;color:#5B6671">Upload the sheet you want to check. It is read inside your browser and is not uploaded anywhere.</div>
     </div>
     <div class="ckbox">
@@ -1153,6 +1153,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
 (function (root) {
   const XL = root.XLCalc;
   const norm = (h) => String(h == null ? '' : h).toLowerCase().replace(/[^a-z0-9؀-ۿ]+/g, '');
+  const an = (x) => norm(x).replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/[أإآ]/g, 'ا'); // tab names: ة/ه, ى/ي and أ/ا count as the same letter
   const isBlank = (v) => v == null || v === '';
   const TOT = /^(total|totals|grand total|المجموع|الاجمالي|الإجمالي|اجمالي)$/i;
   const SKIP = /^(how ?to ?use|settings|summary|instructions?)$/i;
@@ -1311,8 +1312,9 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
     let uPI = null, typedCopy = null;
     if (tPI) {
       const TI = tpl[tPI], iHr = headerRow(TI), iH = headers(TI, iHr);
-      let bs = 0;
-      Object.keys(usr).forEach((n) => { if (n === uPL || SKIP.test(n)) return; const s = usr[n], sc = overlapScore(iH, headers(s, headerRow(s))) + (/per ?invoice/i.test(n) ? 0.5 : 0); if (sc > bs) { bs = sc; uPI = n; } });
+      let bs = 0, mxR = 1; Object.keys(usr).forEach((n) => { if (n !== uPL && !SKIP.test(n)) mxR = Math.max(mxR, usr[n].maxR || 1); });
+      // the tab that looks most like the template's Per Invoice; a tab called "per inv…" and the one with the most rows win a tie (a workbook often has small copies of it, one per group)
+      Object.keys(usr).forEach((n) => { if (n === uPL || SKIP.test(n)) return; const s = usr[n], sc = overlapScore(iH, headers(s, headerRow(s))) + (/per ?inv/i.test(n) ? 2 : 0) + 1.5 * (s.maxR || 1) / mxR; if (sc > bs) { bs = sc; uPI = n; } });
       if (opt.invSheet && usr[opt.invSheet]) uPI = opt.invSheet;
       if (!uPI || bs < 3) uPI = null;
       const typed = iH.filter((h) => !isFormula(TI, iHr, h.c));
@@ -1335,7 +1337,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
     Object.keys(tpl).forEach((n) => {
       if (n === tPL || n === tPI || SKIP.test(n)) return;
       const hasF = Object.keys(tpl[n].cells).some((a) => tpl[n].cells[a].f); if (!hasF) return;
-      const m = Object.keys(usr).filter((k) => k !== uPL && k !== uPI && norm(k) === norm(n))[0];
+      const m = Object.keys(usr).filter((k) => k !== uPL && k !== uPI && an(k) === an(n))[0];
       if (m) pairs.push({ t: n, u: m, kind: 'extra' });
     });
     pairs.forEach((p) => {
@@ -1349,7 +1351,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
       let keyCol = null;
       if (p.kind !== 'line') {
         keyCol = pickKey(calc, p.t, thr, maxRow, us, uhr, um, shared);
-        if (!keyCol) { res.notes.push('Could not match invoices in "' + p.u + '" to the template "' + p.t + '", so that tab was not compared.'); return; }
+        if (!keyCol) { (p.kind === 'extra' ? res.info : res.notes).push('Could not match invoices in "' + p.u + '" to the template "' + p.t + '", so that tab was not compared.'); return; }
         sheetRes.key = keyCol.name;
         if (keyCol.multi) { // an invoice that only differs in the later reference columns (e.g. approval number) is still the same invoice: pair by the first column
           const tk = {}; for (let r = thr + 1; r <= maxRow; r++) { const v = keyCol.tk(r); if (v !== '') tk[v] = 1; }
@@ -1375,6 +1377,15 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
           if (!s.ok) sc.rows.push({ sheet: p.u, tpl: p.t, row: ur, ref: ref, field: h.name, got: show(got), expected: show(ex), diff: s.d == null ? '' : s.d, kind: s.text ? 'text' : 'amount' });
         });
       }
+      // your sheet has two columns with the same header: use the one whose values are the ones the template calculates
+      cmpCols.forEach((h, i) => {
+        const cur = um[h.key]; if (!cur || !aligned.length) return; const base = cur.key.replace(/#\d+$/, ''), sibs = uh.filter((x) => x.key.replace(/#\d+$/, '') === base); if (sibs.length < 2) return;
+        const frac = (x) => { let ok = 0, n = 0; aligned.forEach((al) => { const ex = calc.getRC(p.t, al[0], h.c), c = us.cells[XL.addr(al[1], x.c)]; n++; if (same(c ? c.v : undefined, ex, true).ok) ok++; }); return n ? ok / n : 0; };
+        let best = cur, bf = frac(cur); const fc = bf; sibs.forEach((x) => { if (x === cur) return; const f = frac(x); if (f > bf) { bf = f; best = x; } });
+        if (best === cur || bf <= fc) return;
+        const sc = sheetRes.cols[i]; sc.rows = []; sc.n = 0;
+        aligned.forEach((al) => { const ex = calc.getRC(p.t, al[0], h.c), c = us.cells[XL.addr(al[1], best.c)], got = c ? c.v : undefined, s2 = same(got, ex, /%|rebates?$|rate|percent/i.test(h.name)); sc.n++; if (!s2.ok) sc.rows.push({ sheet: p.u, tpl: p.t, row: al[1], ref: al[2], field: h.name, got: show(got), expected: show(ex), diff: s2.d == null ? '' : s2.d, kind: s2.text ? 'text' : 'amount' }); });
+      });
       // also: invoices that exist in the user's sheet but not in the template result
       if (p.kind !== 'line' && keyCol) {
         const tkeys = {}; for (let r = thr + 1; r <= maxRow; r++) { const v = keyCol.tk(r); if (v !== '') tkeys[v] = 1; }
@@ -1382,7 +1393,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
       }
       // template formula columns with no same-named column: look for a column in the user's tab holding the same values
       const usedU = {}; Object.keys(um).forEach((k) => { if (k !== '__fuzzy' && um[k]) usedU[um[k].key] = 1; });
-      th.filter((h) => isFormula(ts, thr, h.c) && !um[h.key] && !/helper/i.test(h.name)).forEach((h) => {
+      th.filter((h) => isFormula(ts, thr, h.c) && !um[h.key] && !/helper/i.test(h.name) && !ID.test(h.name)).forEach((h) => {
         const tv = aligned.map((a) => calc.getRC(p.t, a[0], h.c)); const nb = tv.filter((v) => !isBlank(v) && !(v && v.err));
         if (nb.length < 3 || new Set(nb.map((v) => String(v))).size < 2) return;
         let best = 0, bu = null;
