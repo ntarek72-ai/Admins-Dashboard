@@ -220,7 +220,7 @@ select:focus-visible,.btn:focus-visible{outline:3px solid #14181F;outline-offset
 
   <section id="checker">
     <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
-      <h2>Review a sheet <span style="font-size:12px;font-weight:600;color:#6b7280;margin-left:8px">version 12 Nov 16:50</span></h2>
+      <h2>Review a sheet <span style="font-size:12px;font-weight:600;color:#6b7280;margin-left:8px">version 16 Nov 12:40</span></h2>
       <div style="font-size:15px;color:#5B6671">Upload the sheet you want to check. It is read inside your browser and is not uploaded anywhere.</div>
     </div>
     <div class="ckbox">
@@ -1263,8 +1263,30 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
     keyCol.skip = cands.filter((h) => isSeq(h)).map((h) => h.key).concat(keyCol.multi ? [] : [keyCol.key]);
     return keyCol;
   }
+  // A workbook may split the month in several tabs with the same columns (e.g. "FULL MATCH PER LINE" and "NOT MATCH PER LINE"): the month is all of them together. Tabs that only repeat rows of a bigger tab (one per payer) are not added.
+  function mergeSiblings(usr) {
+    const groups = {}, maps = {};
+    Object.keys(usr).forEach((n) => { if (SKIP.test(n)) return; const s = usr[n]; if ((s.maxR || 0) < 2) return; const sig = headers(s, headerRow(s)).map((h) => h.key).join('|'); if (sig.length < 6) return; (groups[sig] = groups[sig] || []).push(n); });
+    const out = {}, extra = {};
+    const rs = (s, r) => { let v = []; for (let c = 1; c <= Math.min(8, s.maxC); c++) { const x = s.cells[XL.addr(r, c)]; v.push(x && x.v != null ? String(x.v).toLowerCase() : ''); } return v.join('~'); };
+    Object.keys(groups).forEach((g) => {
+      const names = groups[g].slice().sort((a, b) => usr[b].maxR - usr[a].maxR); if (names.length < 2) return;
+      const L = usr[names[0]], seen = {}; for (let r = headerRow(L) + 1; r <= L.maxR; r++) seen[rs(L, r)] = 1;
+      const take = [names[0]];
+      names.slice(1).forEach((n) => { const s = usr[n], hr = headerRow(s); let tot = 0, hit = 0; for (let r = hr + 1; r <= s.maxR; r++) { tot++; if (seen[rs(s, r)]) hit++; } if (tot && hit / tot < 0.5) { take.push(n); for (let r = hr + 1; r <= s.maxR; r++) seen[rs(s, r)] = 1; } });
+      if (take.length < 2) return;
+      const hr = headerRow(L), nm = take.join(' + '), cells = {}, map = {}; let nr = hr;
+      for (let c = 1; c <= L.maxC; c++) { const x = L.cells[XL.addr(hr, c)]; if (x) cells[XL.addr(hr, c)] = x; }
+      take.forEach((n) => { const s = usr[n], h2 = headerRow(s); for (let r = h2 + 1; r <= s.maxR; r++) { nr++; for (let c = 1; c <= s.maxC; c++) { const x = s.cells[XL.addr(r, c)]; if (x) cells[XL.addr(nr, c)] = x; } map[nr] = n + ' ' + r; } });
+      extra[nm] = { name: nm, cells: cells, maxR: nr, maxC: L.maxC }; maps[nm] = map;
+    });
+    Object.keys(extra).forEach((n) => { out[n] = extra[n]; }); Object.keys(usr).forEach((n) => { out[n] = usr[n]; });
+    return { usr: out, maps: maps };
+  }
   function compare(tpl, usr, opt) {
     opt = opt || {};
+    const merged = mergeSiblings(usr); usr = merged.usr; const rowMaps = merged.maps;
+    const isMergedSrc = (k) => Object.keys(rowMaps).some((g) => g.split(' + ').indexOf(k) >= 0);
     const res = { ok: false, sheets: [], issues: [], notes: [], info: [], unsupported: {}, counts: { lines: 0, invoices: 0, cells: 0 }, mapped: {} };
     const tPL = pickByName(tpl, /^per ?line$/i)[0] || pickByName(tpl, /per ?line/i)[0];
     const tPI = pickByName(tpl, /^per ?invoice$/i)[0] || pickByName(tpl, /per ?invoice/i, /above|below|claim form/i)[0];
@@ -1312,9 +1334,10 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
     let uPI = null, typedCopy = null;
     if (tPI) {
       const TI = tpl[tPI], iHr = headerRow(TI), iH = headers(TI, iHr);
-      let bs = 0, mxR = 1; Object.keys(usr).forEach((n) => { if (n !== uPL && !SKIP.test(n)) mxR = Math.max(mxR, usr[n].maxR || 1); });
-      // the tab that looks most like the template's Per Invoice; a tab called "per inv…" and the one with the most rows win a tie (a workbook often has small copies of it, one per group)
-      Object.keys(usr).forEach((n) => { if (n === uPL || SKIP.test(n)) return; const s = usr[n], sc = overlapScore(iH, headers(s, headerRow(s))) + (/per ?inv/i.test(n) ? 2 : 0) + 1.5 * (s.maxR || 1) / mxR; if (sc > bs) { bs = sc; uPI = n; } });
+      // the tab that looks like the template's Per Invoice; a workbook often also has small copies of it (one per payer or group), so among the tabs that look nearly as much like it, the one with the most rows is the real list
+      const cands = []; let bs = 0;
+      Object.keys(usr).forEach((n) => { if (n === uPL || SKIP.test(n)) return; const s = usr[n], sc = overlapScore(iH, headers(s, headerRow(s))); cands.push({ n: n, sc: sc, r: s.maxR || 0 }); if (sc > bs) bs = sc; });
+      cands.filter((c) => c.sc >= bs - 3).forEach((c) => { if (!uPI || c.r > usr[uPI].maxR || (c.r === usr[uPI].maxR && c.sc > overlapScore(iH, headers(usr[uPI], headerRow(usr[uPI]))))) uPI = c.n; });
       if (opt.invSheet && usr[opt.invSheet]) uPI = opt.invSheet;
       if (!uPI || bs < 3) uPI = null;
       const typed = iH.filter((h) => !isFormula(TI, iHr, h.c));
@@ -1338,7 +1361,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
       if (n === tPL || n === tPI || SKIP.test(n)) return;
       const hasF = Object.keys(tpl[n].cells).some((a) => tpl[n].cells[a].f); if (!hasF) return;
       const m = Object.keys(usr).filter((k) => k !== uPL && k !== uPI && an(k) === an(n))[0];
-      if (m) pairs.push({ t: n, u: m, kind: 'extra' });
+      if (m && !isMergedSrc(m)) pairs.push({ t: n, u: m, kind: 'extra' }); // tabs already combined into the Per Line / Per Invoice are not compared twice
     });
     pairs.forEach((p) => {
       const ts = tpl[p.t], us = usr[p.u], thr = headerRow(ts), uhr = headerRow(us), th = headers(ts, thr), uh = headers(us, uhr);
@@ -1418,6 +1441,7 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
     res.ok = res.sheets.length > 0 && res.counts.cells > 0;
     if (!res.ok) res.notes.push('Nothing could be compared: ' + (res.sheets.length ? res.sheets.length + ' tab(s) matched but no column had the same name or values' : 'no tab of your sheet matched a template tab') + '. Template tabs: ' + Object.keys(tpl).join(', ') + '. Your tabs: ' + Object.keys(usr).join(', ') + '.');
     res.unsupportedFns = calc.unsupported ? Object.keys(calc.unsupported) : [];
+    res.issues.forEach((i) => { const m = rowMaps[i.sheet]; if (m && m[i.row]) i.row = m[i.row]; }); // rows of a combined tab are shown as "original tab + row"
     return res;
   }
   root.TplReview = { compare: compare };
@@ -1630,10 +1654,14 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
   }
   function tplHtml(T) {
     const bad = T.issues.length, nm = lastProfile ? lastProfile.name : '';
+    // one entry per order number: all its differences together, instead of one row for every line and column
+    const ordMap = {}, ords = [];
+    T.issues.forEach((i) => { const k = (i.ref !== '' && i.ref != null ? String(i.ref) : i.sheet + ' row ' + i.row); const kl = k.toLowerCase(); if (!ordMap[kl]) { ordMap[kl] = { ref: k, tabs: {}, n: 0 }; ords.push(ordMap[kl]); } const o = ordMap[kl]; o.n++; (o.tabs[i.sheet] = o.tabs[i.sheet] || []).push(i); });
+    const nOrd = ords.length;
     let h = '';
     const cmp = T.sheets.reduce((a, s) => a + s.cols.filter((c) => !c.skipped).length, 0);
     if (bad === 0) h += '<div class="ck-banner ok">Matches the ' + esc(nm) + ' template &#10003; &nbsp;' + T.counts.lines + ' lines checked and ' + T.counts.cells + ' values compared, no differences.</div>';
-    else h += '<div class="ck-banner bad">' + bad + ' difference' + (bad === 1 ? '' : 's') + ' from the ' + esc(nm) + ' template <span style="font-weight:600;font-size:14px">(' + T.counts.lines + ' lines, ' + T.counts.cells + ' values compared)</span></div>';
+    else h += '<div class="ck-banner bad">' + nOrd + ' order' + (nOrd === 1 ? '' : 's') + ' with differences from the ' + esc(nm) + ' template <span style="font-weight:600;font-size:14px">(' + bad + ' value' + (bad === 1 ? '' : 's') + ' in all; ' + T.counts.lines + ' lines, ' + T.counts.cells + ' values compared)</span></div>';
     if (lastProfile && lastProfile.note) h += '<div class="meta">' + esc(lastProfile.note) + ' Every column below was calculated by the template\'s own formulas on the lines of your sheet, then compared with your sheet by column name.</div>';
     h += '<table class="ck-t" style="margin-top:10px"><thead><tr><th>Template tab</th><th>Your tab</th><th class="n">Rows</th><th class="n">Columns compared</th><th class="n">Differences</th><th></th></tr></thead><tbody>' +
       T.sheets.map((s) => { const k = s.cols.filter((c) => !c.skipped).length; return '<tr class="' + (s.diffs ? 'bad' : '') + '"><td>' + esc(s.tpl) + '</td><td>' + esc(s.sheet) + '</td><td class="n">' + s.rows + '</td><td class="n">' + k + '</td><td class="n">' + s.diffs + '</td><td>' + (s.diffs ? '&#10007;' : '&#10003;') + '</td></tr>'; }).join('') + '</tbody></table>';
@@ -1647,12 +1675,13 @@ tiles.innerHTML = COMPANIES.filter((c) => c.featured).map((c) => {
     const un = Object.keys(T.unsupported || {});
     if (un.length) h += '<div class="meta" style="color:#7A4B00">&#9888; The template uses something this page cannot calculate (' + esc(un.join(', ')) + '), so some values may be wrong.</div>';
     if (bad) {
-      const by = {}; T.issues.forEach((i) => { const k = i.sheet + ' · ' + i.field; by[k] = (by[k] || 0) + 1; });
-      h += '<h3 style="margin:18px 0 4px;font-size:18px">What is different</h3><div class="ck-chips">' + Object.keys(by).slice(0, 40).map((k) => '<span class="ck-chip"><bdi>' + esc(k) + '</bdi>: ' + by[k] + '</span>').join('') + '</div>';
-      const show = T.issues.slice(0, 300);
-      h += '<div class="ck-wrap"><table class="ck-t" style="margin:0"><thead><tr><th>Tab</th><th class="n">Row</th><th>Invoice</th><th>Column</th><th class="n">In your sheet</th><th class="n">Template result</th><th class="n">Diff</th></tr></thead><tbody>' +
-        show.map((i) => '<tr><td>' + esc(i.sheet) + '</td><td class="n">' + esc(i.row) + '</td><td>' + esc(i.ref) + '</td><td><bdi>' + esc(i.field) + '</bdi></td><td class="n">' + (typeof i.got === 'number' ? nf4(i.got) : esc(i.got)) + '</td><td class="n">' + (typeof i.expected === 'number' ? nf4(i.expected) : esc(i.expected)) + '</td><td class="n">' + (i.diff === '' ? '' : nf4(i.diff)) + '</td></tr>').join('') + '</tbody></table></div>';
-      if (T.issues.length > show.length) h += '<div class="meta" style="margin-top:8px">Showing the first ' + show.length + '. The download has all ' + T.issues.length + '.</div>';
+      const by = {}; ords.forEach((o) => Object.keys(o.tabs).forEach((t) => { by[t] = (by[t] || 0) + 1; }));
+      h += '<h3 style="margin:18px 0 4px;font-size:18px">Orders with differences</h3><div class="ck-chips">' + Object.keys(by).slice(0, 40).map((k) => '<span class="ck-chip"><bdi>' + esc(k) + '</bdi>: ' + by[k] + ' order' + (by[k] === 1 ? '' : 's') + '</span>').join('') + '</div>';
+      const fv = (v) => (typeof v === 'number' ? nf4(v) : (v === '' || v == null ? 'blank' : esc(v)));
+      const show = ords.slice(0, 300);
+      h += '<div class="ck-wrap"><table class="ck-t" style="margin:0"><thead><tr><th>Order</th><th>What is different (your sheet &rarr; what the template gives)</th></tr></thead><tbody>' +
+        show.map((o) => '<tr><td style="white-space:nowrap"><bdi>' + esc(o.ref) + '</bdi></td><td>' + Object.keys(o.tabs).map((t) => { const L = o.tabs[t], rows = {}; L.forEach((i) => { rows[i.row] = 1; }); const rr = Object.keys(rows).filter((x) => x !== ''); return '<div style="margin:2px 0"><b>' + esc(t) + (rr.length ? ' (row ' + esc(rr.slice(0, 4).join(', ')) + (rr.length > 4 ? ' +' + (rr.length - 4) : '') + ')' : '') + ':</b> ' + L.map((i) => i.got === 'not in your sheet' || i.expected === 'in template result' || i.field === '(invoice)' ? esc(i.got) + ' / ' + esc(i.expected) : '<bdi>' + esc(i.field) + '</bdi> ' + fv(i.got) + ' &rarr; ' + fv(i.expected)).join(' &nbsp;&middot;&nbsp; ') + '</div>'; }).join('') + '</td></tr>').join('') + '</tbody></table></div>';
+      if (ords.length > show.length) h += '<div class="meta" style="margin-top:8px">Showing the first ' + show.length + ' orders. The download has all ' + T.issues.length + ' differences.</div>';
     }
     return h;
   }
