@@ -220,7 +220,7 @@ select:focus-visible,.btn:focus-visible{outline:3px solid #14181F;outline-offset
 
   <section id="checker">
     <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
-      <h2>Review a sheet <span style="font-size:12px;font-weight:600;color:#6b7280;margin-left:8px">version 18 Nov 17:10</span></h2>
+      <h2>Review a sheet <span style="font-size:12px;font-weight:600;color:#6b7280;margin-left:8px">version 19 Nov 13:50</span></h2>
       <div style="font-size:15px;color:#5B6671">Upload the sheet you want to check. It is read inside your browser and is not uploaded anywhere.</div>
     </div>
     <div class="ckbox">
@@ -278,6 +278,7 @@ const LIST = [
   ['El Tawoon', ''],
   ['EMC', ''],
   ['GASCO', 'ONLYW'],
+  ['General Petroleum', 'ONLYW'],
   ['Globemed', 'W'],
   ['Health and Wealth', 'W'],
   ['HyperOne', 'W'],
@@ -285,6 +286,7 @@ const LIST = [
   ['Medicare', ''],
   ['Mednet', 'WV'],
   ['MedRight', 'W'],
+  ['Medsure', ''],
   ['Metlife', 'WV'],
   ['Misr Health Care', 'WV'],
   ['Nasr Mining', ''],
@@ -341,6 +343,8 @@ const READY = {
   'SEDICO': { desc: 'Per Line and Per Invoice. Paste the month data into Per Line and Per Invoice fills itself.', files: [ { label: 'SEDICO', full: 'SEDICO', file: 'Sedico_Chronic_Template.xlsx' } ] },
   'Anabib El Petrol (Walk In)': { desc: 'Per Line and Per Invoice, with one tab per section (sge). Paste the month data into Per Line and everything else fills itself.', files: [ { label: 'Anabib El Petrol Walk In', full: 'Anabib El Petrol Walk In', file: 'Anabib_El_Petrol_Walk_In_Template.xlsx' } ] },
   'Cinnabon (Walk In)': { desc: 'Per Line and Per Invoice. Paste the month data into Per Line and Per Invoice fills itself.', files: [ { label: 'Cinnabon Walk In', full: 'Cinnabon Walk In', file: 'Cinnabon_Walk_In_Template.xlsx' } ] },
+  'General Petroleum (Walk In)': { desc: 'Per Line and Per Invoice, plus the TEMPLET statement. Paste the month data into Per Line and everything else fills itself.', files: [ { label: 'General Petroleum Walk In', full: 'General Petroleum Walk In', file: 'General_Petroleum_Walk_In_Template.xlsx' } ] },
+  'Medsure (Chronic)': { desc: 'Per Line and Per Invoice (one row per Order # + Approval Ref, with the Special Rebates rate). Paste the month data into Per Line and Per Invoice fills itself.', files: [ { label: 'Medsure', full: 'Medsure', file: 'Medsure_Chronic_Template.xlsx' } ] },
   'GASCO (Walk In)': { desc: 'Per Line and Per Invoice. Paste the month data into Per Line and Per Invoice fills itself.', files: [ { label: 'GASCO Walk In', full: 'GASCO Walk In', file: 'GASCO_Walk_In_Template.xlsx' } ] },
   'Sainco (Walk In)': { tag: 'COPY 30 / 20 / 10', desc: 'Per Line and Per Invoice, one tab per copay (30 %, 20 %, 10 %) with its Arabic statement sheet, and a Summary.', files: [ { label: 'Sainco Walk In', full: 'Sainco Walk In', file: 'Sainco_Walk_In_Template.xlsx' } ] },
   'Seha One (Chronic)': { desc: 'Per Line and Per Invoice, plus one invoice tab per payer, a payer summary and a payer line view.', files: [ { label: 'Seha One Chronic', full: 'Seha One Chronic', file: 'Seha_One_Chronic_Template.xlsx' } ] },
